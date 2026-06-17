@@ -99,6 +99,39 @@ class TestHeuristicExtract:
         result = heuristic_extract("My take home is 7000 per month", [7000])
         assert result.monthly_income == 7000.0
 
+    def test_arabic_multiple_numbers(self):
+        result = heuristic_extract(
+            "عايز سيارة 500000 مع مدخرات 100000 قبض شهري 20000 حوافز 4000 اضافي 3000 مصاريف 4000",
+            [500000, 100000, 20000, 4000, 3000, 4000],
+        )
+        assert result.goal_price == 500000.0
+        assert result.current_savings == 100000.0
+        assert result.monthly_income == 20000.0
+        assert result.extra_income == 7000.0
+        assert result.monthly_expenses == 4000.0
+
+    def test_arabic_urid_shira_araba(self):
+        result = heuristic_extract(
+            "اريد شراء عربة 800000ولدي ادخار300000 مرتب شهري 50000 مصاريف 10000 حوافز 4000 اضافي 2000",
+            [800000, 300000, 50000, 10000, 4000, 2000],
+        )
+        assert result.goal_price == 800000.0
+        assert result.current_savings == 300000.0
+        assert result.monthly_income == 50000.0
+        assert result.extra_income == 6000.0
+        assert result.monthly_expenses == 10000.0
+
+    def test_arabic_bikima_goal(self):
+        result = heuristic_extract(
+            "عايز اشتري سيارة بقيمة 30000 مدخرات 4000 قبض شهري 4000 حوافز 2000 مصاريف 3000",
+            [30000, 4000, 4000, 2000, 3000],
+        )
+        assert result.goal_price == 30000.0
+        assert result.current_savings == 4000.0
+        assert result.monthly_income == 4000.0
+        assert result.extra_income == 2000.0
+        assert result.monthly_expenses == 3000.0
+
 
 class TestApplyIntelligentDefaults:
     def test_none_values_normalized(self):

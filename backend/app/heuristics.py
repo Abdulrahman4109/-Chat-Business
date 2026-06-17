@@ -30,7 +30,7 @@ FIELD_KEYWORDS = {
         "saved so far", "got", "i have", "i got",
         "saving", "deposit", "fund", "funds", "emergency fund",
         "reserve", "reserves", "savings account",
-        "عندي", "معايا", "مدخر", "مدخرات", "محوش", "موفر",
+        "عندي", "معايا", "لدى", "لدي", "مدخر", "مدخرات", "محوش", "موفر",
         "محوشة", "حوشت", "بحوش", "توفير",
         "ادخار", "ادخرت", "في البنك", "في حسابي",
         "حساب توفير", "رصيد", "كاش",
@@ -89,10 +89,11 @@ FIELD_KEYWORDS = {
         "fund", "finance", "afford",
         "my target", "budget for", "estimated cost",
         "approximate", "around",
+        "اريد", "أريد", "بدي", "ابي", "أبي",
         "عايز", "عاوز", "عايزة", "عاوزة", "عايزين",
-        "أشتري", "اشتري", "اشترى",
+        "أشتري", "اشتري", "اشترى", "شراء", "شرا",
         "هدف", "سعر", "تمن", "ثمن",
-        "عربية", "سيارة", "سياره", "عربيتي",
+        "عربية", "سيارة", "سياره", "عربيتي", "عربة", "عرب",
         "نفسي في", "أحلم", "حلم", "طموح",
         "مستهدف", "ناوي على", "ناوي أشتري",
         "محتاج", "أحتاج", "ضروري", "غرض",
@@ -101,6 +102,7 @@ FIELD_KEYWORDS = {
         "سياحة", "دورة", "عملية",
         "موتوسيكل", "لاب توب", "موبايل", "تابلت",
         "أجيب", "عايز أوفر",
+        "قيمة", "بقيمة",
     ],
 }
 
@@ -266,9 +268,12 @@ def _score_context(context: str, keywords: list[str], mention_start: int, mentio
             else:
                 distance = 0
             if distance <= 36:
-                bonus = 0
-                if index >= mention_end and distance <= 2:
-                    bonus = 2 - distance
+                if index >= mention_end:
+                    bonus = 2 if distance == 0 else (1 if distance == 1 else 0)
+                elif keyword_end <= mention_start and distance == 0:
+                    bonus = 1
+                else:
+                    bonus = 0
                 score = max(score, 80 - distance + bonus)
             search_from = index + 1
     return score
