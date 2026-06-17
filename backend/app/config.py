@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     mujarrad_secret_key: str = ""
     mujarrad_api_base: str = "https://www.mujarrad.com/api"
     mujarrad_space_url: str = "https://www.mujarrad.com/spaces/chat"
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,https://chat-business.vercel.app"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
