@@ -67,7 +67,13 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, user_id: userId, conversation_id: conversationId }),
       });
-      const payload = await response.json();
+      let payload;
+      try {
+        payload = await response.json();
+      } catch {
+        const textBody = await response.text();
+        throw new Error(`Server returned ${response.status} (${textBody.slice(0, 80)})`);
+      }
       if (!response.ok) throw new Error(payload.detail || 'Request failed');
       setConversationId(payload.conversation_id);
       setMessages((current) => [...current, payload.assistant_message]);

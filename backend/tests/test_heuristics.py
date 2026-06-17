@@ -73,6 +73,32 @@ class TestHeuristicExtract:
         assert result.current_savings == 0
         assert result.extra_income == 0
 
+    def test_english_full_example(self):
+        result = heuristic_extract(
+            "I want a car worth 600,000. I have 200,000 savings. "
+            "My monthly income is 10,000 salary, 4,000 bonuses, and 3,000 extra income. "
+            "My expenses are 4,000 per month.",
+            [600000, 200000, 10000, 4000, 3000, 4000],
+        )
+        assert result.goal_price == 600000.0
+        assert result.current_savings == 200000.0
+        assert result.monthly_income == 10000.0
+        assert result.extra_income == 7000.0
+        assert result.monthly_expenses == 4000.0
+
+    def test_numbers_attached_to_arabic(self):
+        result = heuristic_extract("عاوز اشتري عربية 9855وقب شهر 2000", [9855, 2000])
+        assert result.goal_price == 9855.0
+        assert result.monthly_income == 2000.0
+
+    def test_english_have_keyword_for_savings(self):
+        result = heuristic_extract("I have 50000 in the bank", [50000])
+        assert result.current_savings == 50000.0
+
+    def test_take_home_keyword_for_income(self):
+        result = heuristic_extract("My take home is 7000 per month", [7000])
+        assert result.monthly_income == 7000.0
+
 
 class TestApplyIntelligentDefaults:
     def test_none_values_normalized(self):
@@ -103,3 +129,15 @@ class TestMergeExtractions:
         merged = merge_extractions(primary, fallback)
         assert merged.monthly_income == 7000.0
         assert merged.monthly_expenses == 3000.0
+
+    def test_prefers_value_in_numbers_over_wrong_ai(self):
+        primary = FinancialData(current_savings=800000.0, all_numbers=[600000.0, 200000.0, 10000.0])
+        fallback = FinancialData(current_savings=200000.0, all_numbers=[600000.0, 200000.0, 10000.0])
+        merged = merge_extractions(primary, fallback)
+        assert merged.current_savings == 200000.0
+
+    def test_max_when_both_in_numbers(self):
+        primary = FinancialData(monthly_income=10000.0, all_numbers=[600000.0, 200000.0, 10000.0, 4000.0])
+        fallback = FinancialData(monthly_income=7000.0, all_numbers=[600000.0, 200000.0, 7000.0, 4000.0])
+        merged = merge_extractions(primary, fallback)
+        assert merged.monthly_income == 10000.0

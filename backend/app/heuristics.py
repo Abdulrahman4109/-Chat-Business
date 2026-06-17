@@ -7,8 +7,14 @@ ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234
 
 FIELD_KEYWORDS = {
     "extra_income": [
-        "extra", "side", "freelance", "bonus", "sometimes get", "additional",
-        "overtime", "commission",
+        "extra", "side", "freelance", "bonus", "bonuses", "sometimes get", "additional",
+        "overtime", "commission", "commissions", "side hustle", "part time",
+        "gig", "tips", "tipping", "passive income", "passive",
+        "second job", "weekend job", "evening job", "side gig", "side work",
+        "extra cash", "extra money", "investment income", "rental income",
+        "dividend", "interest", "cashback", "reward", "incentive",
+        "per diem", "allowance", "stipend", "bonus pay", "yearly bonus",
+        "annual bonus", "commission pay", "gig work",
         "اضافي", "إضافي", "زيادة", "فريلانس", "مكافأة", "حوافز",
         "باخد", "بآخد", "اخد", "اخدت",
         "شغل إضافي", "شغل جانبي", "شغل جمبي", "عمل جانبي",
@@ -18,8 +24,12 @@ FIELD_KEYWORDS = {
         "شغل اونلاين", "مشروع", "عائد", "ايراد", "مردود",
     ],
     "current_savings": [
-        "saved", "savings", "save", "have", "with me", "already",
-        "bank", "cash", "balance",
+        "saved", "savings", "save", "with me", "already", "have",
+        "bank", "cash", "balance", "in my account", "available",
+        "currently have", "saved up", "put aside", "set aside",
+        "saved so far", "got", "i have", "i got",
+        "saving", "deposit", "fund", "funds", "emergency fund",
+        "reserve", "reserves", "savings account",
         "عندي", "معايا", "مدخر", "مدخرات", "محوش", "موفر",
         "محوشة", "حوشت", "بحوش", "توفير",
         "ادخار", "ادخرت", "في البنك", "في حسابي",
@@ -30,6 +40,14 @@ FIELD_KEYWORDS = {
     ],
     "monthly_expenses": [
         "spend", "expenses", "expense", "rent", "bills", "costs", "pay",
+        "spending", "monthly spend", "outgoing", "outgoings", "living cost",
+        "living expenses", "cost of living", "overheads",
+        "fixed costs", "variable costs", "loan", "debt", "credit",
+        "mortgage", "utility", "utilities", "groceries", "food",
+        "transport", "transportation", "insurance",
+        "subscription", "emi", "monthly payment",
+        "spending money", "i spend", "i pay",
+        "monthly expenses",
         "بصرف", "اصرف", "صرفت", "يصرف", "صرف",
         "مصروف", "مصاريف", "مصروفات", "مصاريفي", "مصروفي",
         "ايجار", "إيجار", "فواتير", "فاتورة",
@@ -42,12 +60,17 @@ FIELD_KEYWORDS = {
         "سوبرماركت", "تموين", "عيش",
     ],
     "monthly_income": [
-        "earn", "salary", "income", "make", "monthly income", "per month",
-        "wage", "earning",
+        "earn", "salary", "income", "make", "monthly income",
+        "wage", "earning", "monthly salary", "my salary", "base salary",
+        "take home", "net salary", "gross", "basic",
+        "monthly pay", "my pay", "fixed", "wages",
+        "payslip", "primary", "full time", "9 to 5", "day job",
+        "fixed income", "monthly earning", "primary income",
+        "main income", "job income",
         "بقبض", "قبضي", "قبض", "قبضت",
         "بدخل", "دخلي", "دخل", "دخول",
         "راتب", "مرتب", "راتبي", "مرتبي",
-        "شهري", "شهرية",
+        "شهر", "شهري", "شهرية",
         "معاش", "مرتبات", "علاوة", "بدل",
         "أجر", "أجرة", "كسب", "مكسب", "رزق",
         "تعويض", "صافي", "إجمالي",
@@ -56,7 +79,16 @@ FIELD_KEYWORDS = {
         "ايراد", "إيراد", "ارباح",
     ],
     "goal_price": [
-        "want to buy", "buy", "goal", "target", "price",
+        "want to buy", "buy", "goal", "target", "price", "worth",
+        "car", "vehicle", "house", "apartment", "condo",
+        "want", "need", "save for", "saving for", "planning to buy",
+        "will cost", "priced at", "cost", "budget", "my goal",
+        "aiming for", "save up for",
+        "purchase", "looking for", "looking to buy",
+        "plan to buy", "intend to buy", "save up",
+        "fund", "finance", "afford",
+        "my target", "budget for", "estimated cost",
+        "approximate", "around",
         "عايز", "عاوز", "عايزة", "عاوزة", "عايزين",
         "أشتري", "اشتري", "اشترى",
         "هدف", "سعر", "تمن", "ثمن",
@@ -148,6 +180,10 @@ def heuristic_extract(message: str, token_numbers: list[float]) -> FinancialData
 
 def merge_extractions(primary: FinancialData, fallback: FinancialData) -> FinancialData:
     merged = primary.model_copy(deep=True)
+    numbers_set = set()
+    for n in [*merged.all_numbers, *fallback.all_numbers]:
+        numbers_set.add(round(float(n), 4))
+
     for field in ("goal_price", "monthly_income", "monthly_expenses", "current_savings", "extra_income"):
         if field == "goal_price":
             if getattr(merged, field) is None:
@@ -155,7 +191,17 @@ def merge_extractions(primary: FinancialData, fallback: FinancialData) -> Financ
         else:
             pv = getattr(merged, field) or 0
             fv = getattr(fallback, field) or 0
-            setattr(merged, field, max(pv, fv))
+            if pv and fv:
+                pv_in = round(float(pv), 4) in numbers_set
+                fv_in = round(float(fv), 4) in numbers_set
+                if pv_in and not fv_in:
+                    setattr(merged, field, pv)
+                elif fv_in and not pv_in:
+                    setattr(merged, field, fv)
+                else:
+                    setattr(merged, field, max(pv, fv))
+            else:
+                setattr(merged, field, max(pv, fv))
     if not merged.goals:
         merged.goals = fallback.goals
     merged.all_numbers = _dedupe_numbers([*merged.all_numbers, *fallback.all_numbers])
@@ -177,6 +223,9 @@ def apply_intelligent_defaults(data: FinancialData) -> FinancialData:
     return normalized
 
 
+FIELD_PRIORITY = ["goal_price", "monthly_income", "monthly_expenses", "current_savings", "extra_income"]
+
+
 def _classify_mention(text: str, mention: NumberMention) -> tuple[str, int] | None:
     best_field = None
     lowered = text.lower()
@@ -189,7 +238,10 @@ def _classify_mention(text: str, mention: NumberMention) -> tuple[str, int] | No
 
     for field, keywords in FIELD_KEYWORDS.items():
         score = _score_context(context, keywords, mention_start, mention_end)
-        if score > best_score:
+        if best_field is None:
+            best_score = score
+            best_field = field
+        elif score > best_score or (score == best_score and FIELD_PRIORITY.index(field) < FIELD_PRIORITY.index(best_field)):
             best_score = score
             best_field = field
     if best_field is None:
@@ -214,7 +266,9 @@ def _score_context(context: str, keywords: list[str], mention_start: int, mentio
             else:
                 distance = 0
             if distance <= 36:
-                bonus = 5 if index < mention_start else 0  # keyword before number is stronger signal
+                bonus = 0
+                if index >= mention_end and distance <= 2:
+                    bonus = 2 - distance
                 score = max(score, 80 - distance + bonus)
             search_from = index + 1
     return score

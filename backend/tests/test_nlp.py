@@ -33,3 +33,8 @@ class TestExtractNumbers:
     def test_deduplication(self):
         result = extract_numbers("5000 5000 5000")
         assert result.count(5000.0) == 1
+
+    def test_numbers_attached_to_arabic_text(self):
+        result = extract_numbers("عاوز اشتري عربية 9855وقب شهر 2000")
+        assert 9855.0 in result
+        assert 2000.0 in result
