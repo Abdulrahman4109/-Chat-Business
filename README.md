@@ -36,7 +36,7 @@ Create `backend/.env` with the following keys:
 
 | Variable | Description |
 |----------|-------------|
-| `OPENAI_API_KEY` | OpenRouter API key |
+| `OPENROUTER_API_KEY` | OpenRouter API key |
 | `MUJARRAD_PUBLIC_KEY` | Public key from `npx mujarrad-cli sdk keygen` |
 | `MUJARRAD_SECRET_KEY` | Secret key from `npx mujarrad-cli sdk keygen` |
 

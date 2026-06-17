@@ -137,7 +137,7 @@ curl -H "X-API-Key: pk_live_..." -H "X-API-Secret: sk_live_..." ^
 
 ### مشكلة 1: OpenRouter key كانت مضبوطة غلط
 - **المشكلة**: حطينا Mujarrad secret key في `OPENAI_API_KEY` بالغلط
-- **الحل**: فصلنا المتغيرات — `OPENAI_API_KEY` للـ AI و `MUJARRAD_SECRET_KEY` للـ API
+- **الحل**: فصلنا المتغيرات — `OPENROUTER_API_KEY` للـ AI و `MUJARRAD_SECRET_KEY` للـ API
 
 ### مشكلة 2: الاتصال بـ Mujarrad API بيرفض المفاتيح
 - **المشكلة**: `401 Invalid secret key`
