@@ -32,11 +32,11 @@ pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 ```
 
-Copy `backend/.env.example` to `backend/.env` and fill in the required keys:
+Create `backend/.env` with the following keys:
 
 | Variable | Description |
 |----------|-------------|
-| `OPENAI_API_KEY` | OpenRouter (or OpenAI) API key |
+| `OPENAI_API_KEY` | OpenRouter API key |
 | `MUJARRAD_PUBLIC_KEY` | Public key from `npx mujarrad-cli sdk keygen` |
 | `MUJARRAD_SECRET_KEY` | Secret key from `npx mujarrad-cli sdk keygen` |
 
