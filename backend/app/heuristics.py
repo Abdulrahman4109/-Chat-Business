@@ -18,6 +18,7 @@ FIELD_KEYWORDS = {
         "زيادة",
         "فريلانس",
         "مكافأة",
+        "حوافز",
         "باخد",
         "بآخد",
         "اخد",
@@ -169,7 +170,11 @@ def heuristic_extract(message: str, token_numbers: list[float]) -> FinancialData
 def merge_extractions(primary: FinancialData, fallback: FinancialData) -> FinancialData:
     merged = primary.model_copy(deep=True)
     for field in ("goal_price", "monthly_income", "monthly_expenses", "current_savings", "extra_income"):
-        if getattr(merged, field) is None:
+        if field == "extra_income":
+            pv = getattr(merged, field) or 0
+            fv = getattr(fallback, field) or 0
+            setattr(merged, field, max(pv, fv))
+        elif getattr(merged, field) is None:
             setattr(merged, field, getattr(fallback, field))
     if not merged.goals:
         merged.goals = fallback.goals
