@@ -75,25 +75,34 @@ class MujarradStorage:
         local = self._load_local()
         records = [r for r in local if r.get("user_id") == user_id]
 
-        # Try remote to get fresher data
+        # Try remote to get fresher data (fetch all pages)
         try:
             async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
-                response = await client.get(
-                    f"{self.base_url}/spaces/{self.slug}/nodes",
-                    headers=self.headers,
-                )
-                if response.is_success:
+                remote = []
+                page = 0
+                while True:
+                    response = await client.get(
+                        f"{self.base_url}/spaces/{self.slug}/nodes",
+                        params={"page": page, "size": 50},
+                        headers=self.headers,
+                    )
+                    if not response.is_success:
+                        break
                     data = response.json()
                     nodes = data.get("content", []) if isinstance(data, dict) else []
-                    if isinstance(nodes, list):
-                        remote = []
-                        for node in nodes:
-                            details = node.get("nodeDetails") or {}
-                            if details.get("user_id") == user_id:
-                                remote.append(details)
-                        if remote:
-                            self._save_local(remote)
-                            return remote
+                    if not isinstance(nodes, list) or not nodes:
+                        break
+                    for node in nodes:
+                        details = node.get("nodeDetails") or {}
+                        if details.get("user_id") == user_id:
+                            remote.append(details)
+                    total = data.get("totalElements", 0) if isinstance(data, dict) else 0
+                    page += 1
+                    if page * 50 >= total:
+                        break
+                if remote:
+                    self._save_local(remote)
+                    return remote
         except Exception as e:
             print("Mujarrad remote fetch skipped:", e)
 
