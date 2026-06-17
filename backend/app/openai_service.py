@@ -13,7 +13,7 @@ Extract every numeric financial value from the user's text and classify values i
 - monthly_income: recurring monthly income or salary
 - monthly_expenses: recurring monthly expenses, spending, rent, bills, debts, or costs
 - current_savings: current saved amount, cash, bank balance, or amount already available
-- extra_income: recurring extra monthly income, side income, bonus per month, freelancing income
+- extra_income: SUM of ALL recurring extra monthly incomes (side income + bonuses + freelancing + additional income)
 
 Rules:
 - Never fail and never return text outside JSON.

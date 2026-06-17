@@ -137,19 +137,24 @@ def heuristic_extract(message: str, token_numbers: list[float]) -> FinancialData
     text = normalize_text(message)
     mentions = extract_number_mentions(text)
     data = FinancialData(all_numbers=_dedupe_numbers([*[m.value for m in mentions], *token_numbers]))
-    field_matches: dict[str, tuple[NumberMention, int]] = {}
+    field_matches: dict[str, list[tuple[NumberMention, int]]] = {}
 
     for mention in mentions:
         classified = _classify_mention(text, mention)
         if classified is None:
             continue
         field, score = classified
-        current = field_matches.get(field)
-        if current is None or score > current[1]:
-            field_matches[field] = (mention, score)
+        if field not in field_matches:
+            field_matches[field] = []
+        field_matches[field].append((mention, score))
 
-    for field, (mention, _) in field_matches.items():
-        setattr(data, field, mention.value)
+    for field, matches in field_matches.items():
+        if field == "extra_income":
+            total = sum(m[0].value for m in matches)
+            setattr(data, field, total)
+        else:
+            best = max(matches, key=lambda m: m[1])
+            setattr(data, field, best[0].value)
 
     if data.goal_price is None and mentions and _has_goal_language(text):
         used = {match[0] for match in field_matches.values()}
