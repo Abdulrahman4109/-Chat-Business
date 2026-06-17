@@ -55,7 +55,7 @@ class MujarradStorage:
 
         # Remote save (Mujarrad)
         payload = {
-            "title": f"chat-{record.conversation_id}",
+            "title": f"chat-{record.id}",
             "nodeType": "REGULAR",
             "nodeDetails": data,
         }
