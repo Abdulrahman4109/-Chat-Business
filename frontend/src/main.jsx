@@ -67,11 +67,11 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, user_id: userId, conversation_id: conversationId }),
       });
+      const textBody = await response.text();
       let payload;
       try {
-        payload = await response.json();
+        payload = JSON.parse(textBody);
       } catch {
-        const textBody = await response.text();
         throw new Error(`Server returned ${response.status} (${textBody.slice(0, 80)})`);
       }
       if (!response.ok) throw new Error(payload.detail || 'Request failed');
