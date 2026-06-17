@@ -135,32 +135,28 @@ curl -H "X-API-Key: pk_live_..." -H "X-API-Secret: sk_live_..." ^
 
 ## 4. المشاكل اللي واجهتنا والحلول
 
-### مشكلة 1: OpenRouter key كانت مضبوطة غلط
-- **المشكلة**: حطينا Mujarrad secret key في `OPENAI_API_KEY` بالغلط
-- **الحل**: فصلنا المتغيرات — `OPENROUTER_API_KEY` للـ AI و `MUJARRAD_SECRET_KEY` للـ API
-
-### مشكلة 2: الاتصال بـ Mujarrad API بيرفض المفاتيح
+### مشكلة 1: الاتصال بـ Mujarrad API بيرفض المفاتيح
 - **المشكلة**: `401 Invalid secret key`
 - **السبب**: المفاتيح القديمة كانت غير صالحة (اتعملت قبل التسجيل)
 - **الحل**: سجلنا دخول بـ `npx mujarrad-cli auth login` وبعدين عملنا `npx mujarrad-cli sdk keygen --name "chat-app"` وجابنا مفاتيح جديدة شغالة
 
-### مشكلة 3: API base URL غلط
+### مشكلة 2: API base URL غلط
 - **المشكلة**: `MUJARRAD_API_BASE` كانت `https://www.mujarrad.com/settings`
 - **الحل**: غيرناها لـ `https://www.mujarrad.com/api` (دا endpoint الباك إند يستخدمه مش بتفتحه في المتصفح)
 
-### مشكلة 4: Storage code بيقرا الـ response غلط
+### مشكلة 3: Storage code بيقرا الـ response غلط
 - **المشكلة**: `get_history` كان بيستخدم `data.get("data", [])` بس الـ API بيرجع `{"content": [...]}`
 - **الحل**: غيرناها لـ `data.get("content", [])`
 
-### مشكلة 5: POST body ناقص
+### مشكلة 4: POST body ناقص
 - **المشكلة**: كنا بنبعت `{"nodeDetails": ...}` بس الـ API محتاج `title` + `nodeType` + `nodeDetails`
 - **الحل**: ضبطنا الـ payload في `storage.py` عشان يبقى `{"title": "chat-xxx", "nodeType": "REGULAR", "nodeDetails": ...}`
 
-### مشكلة 6: History attribute error
+### مشكلة 5: History attribute error
 - **المشكلة**: `r.conversation_id` → AttributeError (لأن `r` كانت dict مش object)
 - **الحل**: ضبطنا الوصول للـ key
 
-### مشكلة 7: Sidebar غير مرتب
+### مشكلة 6: Sidebar غير مرتب
 - **المشكلة**: تاريخ المحادثات مش مرتب حسب الأحدث
 - **الحل**: ضفنا sorting في الفرونت إند
 
