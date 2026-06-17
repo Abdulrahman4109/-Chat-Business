@@ -21,3 +21,6 @@ Thumbs.db
 
 # Project temp
 .history/
+
+# Old backend (moved to frontend/api/)
+backend/

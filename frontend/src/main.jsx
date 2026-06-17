@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Clock, Goal, Menu, Send, Sparkles, Wallet, X } from 'lucide-react';
 import './styles.css';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 const USER_ID_KEY = 'financial-chat-user-id';
 
 function getUserId() {

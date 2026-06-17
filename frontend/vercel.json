@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/(chat|history|health|analyze|calculate|mujarrad/.*)", "destination": "/api/index" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
