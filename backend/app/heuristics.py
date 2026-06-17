@@ -7,89 +7,68 @@ ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234
 
 FIELD_KEYWORDS = {
     "extra_income": [
-        "extra",
-        "side",
-        "freelance",
-        "bonus",
-        "sometimes get",
-        "additional",
-        "اضافي",
-        "إضافي",
-        "زيادة",
-        "فريلانس",
-        "مكافأة",
-        "حوافز",
-        "باخد",
-        "بآخد",
-        "اخد",
+        "extra", "side", "freelance", "bonus", "sometimes get", "additional",
+        "overtime", "commission",
+        "اضافي", "إضافي", "زيادة", "فريلانس", "مكافأة", "حوافز",
+        "باخد", "بآخد", "اخد", "اخدت",
+        "شغل إضافي", "شغل جانبي", "شغل جمبي", "عمل جانبي",
+        "اوفر تايم", "ساعات إضافية",
+        "عمولة", "نسبة", "ارباح", "ربح", "بونص",
+        "دخل إضافي", "منحة", "كسبت", "بجيب", "جاب",
+        "شغل اونلاين", "مشروع", "عائد", "ايراد", "مردود",
     ],
     "current_savings": [
-        "saved",
-        "savings",
-        "save",
-        "have",
-        "with me",
-        "already",
-        "bank",
-        "cash",
-        "عندي",
-        "معايا",
-        "مدخر",
-        "مدخرات",
-        "محوش",
-        "موفر",
+        "saved", "savings", "save", "have", "with me", "already",
+        "bank", "cash", "balance",
+        "عندي", "معايا", "مدخر", "مدخرات", "محوش", "موفر",
+        "محوشة", "حوشت", "بحوش", "توفير",
+        "ادخار", "ادخرت", "في البنك", "في حسابي",
+        "حساب توفير", "رصيد", "كاش",
+        "شهادات", "وديعة", "دهب", "ذهب",
+        "متوفر", "موجود", "تحت الفراش", "في الخزنة",
+        "فلوس", "نقود",
     ],
     "monthly_expenses": [
-        "spend",
-        "expenses",
-        "expense",
-        "rent",
-        "bills",
-        "costs",
-        "pay",
-        "بصرف",
-        "اصرف",
-        "مصروف",
-        "مصاريف",
-        "ايجار",
-        "إيجار",
-        "فواتير",
+        "spend", "expenses", "expense", "rent", "bills", "costs", "pay",
+        "بصرف", "اصرف", "صرفت", "يصرف", "صرف",
+        "مصروف", "مصاريف", "مصروفات", "مصاريفي", "مصروفي",
+        "ايجار", "إيجار", "فواتير", "فاتورة",
+        "أقساط", "قسط", "دفع", "دافع", "بدفع",
+        "كهربا", "مياه", "غاز", "نت", "تليفون", "محمول",
+        "بنزين", "مواصلات", "أكل", "سكن",
+        "علاج", "دوا", "تعليم", "مدارس", "جامعة",
+        "تكاليف", "التزامات", "احتياجات", "مستلزمات",
+        "ضرايب", "خلص", "بخرج",
+        "سوبرماركت", "تموين", "عيش",
     ],
     "monthly_income": [
-        "earn",
-        "salary",
-        "income",
-        "make",
-        "monthly income",
-        "per month",
-        "بقبض",
-        "قبضي",
-        "قبض",
-        "بدخل",
-        "دخلي",
-        "دخل",
-        "راتب",
-        "مرتب",
-        "شهري",
+        "earn", "salary", "income", "make", "monthly income", "per month",
+        "wage", "earning",
+        "بقبض", "قبضي", "قبض", "قبضت",
+        "بدخل", "دخلي", "دخل", "دخول",
+        "راتب", "مرتب", "راتبي", "مرتبي",
+        "شهري", "شهرية",
+        "معاش", "مرتبات", "علاوة", "بدل",
+        "أجر", "أجرة", "كسب", "مكسب", "رزق",
+        "تعويض", "صافي", "إجمالي",
+        "مرتب ثابت", "مستلم", "استلمت", "استلم",
+        "بينزل", "نزل الراتب",
+        "ايراد", "إيراد", "ارباح",
     ],
     "goal_price": [
-        "want to buy",
-        "buy",
-        "goal",
-        "target",
-        "price",
-        "عايز",
-        "عاوز",
-        "أشتري",
-        "اشتري",
-        "اشترى",
-        "هدف",
-        "سعر",
-        "تمن",
-        "ثمن",
-        "عربية",
-        "سيارة",
-        "سياره",
+        "want to buy", "buy", "goal", "target", "price",
+        "عايز", "عاوز", "عايزة", "عاوزة", "عايزين",
+        "أشتري", "اشتري", "اشترى",
+        "هدف", "سعر", "تمن", "ثمن",
+        "عربية", "سيارة", "سياره", "عربيتي",
+        "نفسي في", "أحلم", "حلم", "طموح",
+        "مستهدف", "ناوي على", "ناوي أشتري",
+        "محتاج", "أحتاج", "ضروري", "غرض",
+        "شقة", "بيت", "فيلا", "أرض",
+        "جهاز", "زواج", "جواز", "سفر",
+        "سياحة", "دورة", "عملية",
+        "موتوسيكل", "لاب توب", "موبايل", "تابلت",
+        "أجيب", "عايز أوفر",
     ],
 }
 
@@ -150,12 +129,12 @@ def heuristic_extract(message: str, token_numbers: list[float]) -> FinancialData
         field_matches[field].append((mention, score))
 
     for field, matches in field_matches.items():
-        if field == "extra_income":
-            total = sum(m[0].value for m in matches)
-            setattr(data, field, total)
-        else:
+        if field == "goal_price":
             best = max(matches, key=lambda m: m[1])
             setattr(data, field, best[0].value)
+        else:
+            total = sum(m[0].value for m in matches)
+            setattr(data, field, total)
 
     if data.goal_price is None and mentions and _has_goal_language(text):
         used = {match[0] for match in field_matches.values()}
@@ -170,12 +149,13 @@ def heuristic_extract(message: str, token_numbers: list[float]) -> FinancialData
 def merge_extractions(primary: FinancialData, fallback: FinancialData) -> FinancialData:
     merged = primary.model_copy(deep=True)
     for field in ("goal_price", "monthly_income", "monthly_expenses", "current_savings", "extra_income"):
-        if field == "extra_income":
+        if field == "goal_price":
+            if getattr(merged, field) is None:
+                setattr(merged, field, getattr(fallback, field))
+        else:
             pv = getattr(merged, field) or 0
             fv = getattr(fallback, field) or 0
             setattr(merged, field, max(pv, fv))
-        elif getattr(merged, field) is None:
-            setattr(merged, field, getattr(fallback, field))
     if not merged.goals:
         merged.goals = fallback.goals
     merged.all_numbers = _dedupe_numbers([*merged.all_numbers, *fallback.all_numbers])
@@ -234,7 +214,8 @@ def _score_context(context: str, keywords: list[str], mention_start: int, mentio
             else:
                 distance = 0
             if distance <= 36:
-                score = max(score, 80 - distance + (10 if " " in lowered_keyword else 0))
+                bonus = 5 if index < mention_start else 0  # keyword before number is stronger signal
+                score = max(score, 80 - distance + bonus)
             search_from = index + 1
     return score
 
