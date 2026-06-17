@@ -45,8 +45,8 @@ class OpenAIExtractionService:
     def __init__(self) -> None:
         settings = get_settings()
         self.model = settings.openai_model
-        if settings.openrouter_api_key:
-            client_kwargs = {"api_key": settings.openrouter_api_key}
+        if settings.openai_api_key:
+            client_kwargs = {"api_key": settings.openai_api_key}
             if settings.openai_base_url:
                 client_kwargs["base_url"] = settings.openai_base_url
             self.client = AsyncOpenAI(**client_kwargs)

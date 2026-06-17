@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    openrouter_api_key: str = ""
+    openai_api_key: str = ""
     openai_base_url: str = "https://openrouter.ai/api/v1"
     openai_model: str = "gpt-4o-mini"
     mujarrad_public_key: str = ""

@@ -28,7 +28,7 @@ backend/
 │   ├── config.py         # Settings from .env
 │   ├── models.py         # Pydantic models
 │   ├── storage.py        # Local JSON + Mujarrad API
-│   ├── openai_service.py  # OpenRouter client
+│   ├── openai_service.py  # AI client
 │   ├── heuristics.py      # Rule-based extraction (fallback)
 │   ├── calculator.py      # Goal timeline calculator
 │   └── nlp.py             # Number extraction (spaCy + regex)

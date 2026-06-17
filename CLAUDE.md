@@ -3,19 +3,19 @@
 ## Stack
 - Backend: Python FastAPI (port 8000)
 - Frontend: React + Vite (port 5173)
-- AI: OpenRouter (gpt-4o-mini) — OpenAI-compatible
+- AI: gpt-4o-mini (OpenAI-compatible)
 - Storage: Local JSON (`~/.mujarrad-chat/history.json`) + Mujarrad API
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `backend/.env` | API keys (OpenRouter + Mujarrad) |
+| `backend/.env` | API keys (AI + Mujarrad) |
 | `backend/app/main.py` | FastAPI routes: `/chat`, `/history`, `/analyze`, `/calculate`, `/health`, `/mujarrad/status` |
 | `backend/app/storage.py` | `MujarradStorage`: saves to local JSON + syncs to `POST /api/spaces/{slug}/nodes` |
 | `backend/app/config.py` | `Settings`: reads `.env`, extracts space slug from `MUJARRAD_SPACE_URL` |
 | `backend/app/models.py` | Pydantic models: `ChatRecord`, `FinancialData`, `CalculationResult`, etc. |
-| `backend/app/openai_service.py` | OpenAI/OpenRouter client with `base_url` support |
+| `backend/app/openai_service.py` | OpenAI client with `base_url` support |
 | `backend/app/heuristics.py` | Rule-based Arabic/English financial extraction (fallback when no AI key) |
 | `backend/app/calculator.py` | Goal timeline calculator |
 | `backend/app/nlp.py` | Number extraction (spaCy + regex) |

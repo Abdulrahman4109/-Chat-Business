@@ -16,7 +16,7 @@ A smart financial chat app that extracts numbers from natural language (Arabic/E
 |-------|-----------|
 | Backend | Python FastAPI (port 8000) |
 | Frontend | React + Vite (port 5173) |
-| AI | OpenRouter (gpt-4o-mini) — OpenAI-compatible |
+| AI | gpt-4o-mini (OpenAI-compatible) |
 | NLP | spaCy + Regex |
 | Storage | Local JSON + Mujarrad API |
 
@@ -36,7 +36,7 @@ Create `backend/.env` with the following keys:
 
 | Variable | Description |
 |----------|-------------|
-| `OPENROUTER_API_KEY` | OpenRouter API key |
+| `OPENAI_API_KEY` | API key |
 | `MUJARRAD_PUBLIC_KEY` | Public key from `npx mujarrad-cli sdk keygen` |
 | `MUJARRAD_SECRET_KEY` | Secret key from `npx mujarrad-cli sdk keygen` |
 
