@@ -1,16 +1,28 @@
-# Financial Chat Assistant
+# ChatBusiness — Financial Chat Assistant
 
-Full-stack chat app that extracts financial numbers from natural language, classifies them, calculates goal timelines, and stores chat history only through `https://www.mujarrad.com/spaces/chat`.
+تطبيق شات مالي ذكي يستخرج الأرقام من النصوص الطبيعية (عربي/إنجليزي)، يحسب الجدول الزمني لتحقيق الأهداف المالية، ويحفظ المحادثات عبر Mujarrad API.
 
-## Stack
+## المميزات
 
-- Backend: FastAPI, OpenAI API, spaCy tokenization/numeric extraction
-- Frontend: React + Vite
-- Storage: Mujarrad Spaces endpoint only
+- استخراج الدخل، المصروفات، المدخرات، والأهداف المالية من أي جملة
+- حساب المدة اللازمة لتحقيق الهدف (شهور/سنوات)
+- يدعم اللغة العربية والإنجليزية
+- حفظ المحادثات محليًا (`~/.mujarrad-chat/history.json`) وسحابيًا (Mujarrad)
+- واجهة شات مثل ChatGPT مع سجل جانبي
 
-## Setup
+## التقنيات
 
-### Backend
+| الطبقة | التقنية |
+|--------|---------|
+| Backend | Python FastAPI (port 8000) |
+| Frontend | React + Vite (port 5173) |
+| AI | OpenRouter (gpt-4o-mini) — OpenAI-compatible |
+| NLP | spaCy + Regex |
+| Storage | Local JSON + Mujarrad API |
+
+## التشغيل
+
+### 1. Backend
 
 ```bash
 cd backend
@@ -20,17 +32,21 @@ pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 ```
 
-Copy `.env` with your keys (see below), then:
+انسخ `backend/.env.example` إلى `backend/.env` وضع المفاتيح المطلوبة:
+
+| المتغير | الشرح |
+|---------|-------|
+| `OPENAI_API_KEY` | مفتاح OpenRouter (أو OpenAI) |
+| `MUJARRAD_PUBLIC_KEY` | public key من `npx mujarrad-cli sdk keygen` |
+| `MUJARRAD_SECRET_KEY` | secret key من `npx mujarrad-cli sdk keygen` |
+
+ثم:
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-**Required env vars in `backend/.env`:**
-- `OPENAI_API_KEY` — OpenRouter or OpenAI key
-- `MUJARRAD_PUBLIC_KEY` / `MUJARRAD_SECRET_KEY` — generate via `npx mujarrad-cli sdk keygen --name "my-app"`
-
-### Frontend
+### 2. Frontend
 
 ```bash
 cd frontend
@@ -38,12 +54,30 @@ npm install
 npm run dev
 ```
 
-The frontend expects the backend at `http://localhost:8000` unless `VITE_API_BASE_URL` is set.
+تطبق التطبيق على `http://localhost:5173`.
 
-## API
+## API Endpoints
 
-- `POST /chat`
-- `POST /analyze`
-- `POST /calculate`
-- `GET /history`
+| المسار | الوظيفة |
+|--------|---------|
+| `POST /chat` | إرسال رسالة واستلام رد |
+| `GET /history?user_id=xxx` | جلب تاريخ المحادثات |
+| `POST /analyze` | تحليل مالي للنص |
+| `POST /calculate` | حساب الجدول الزمني |
+| `GET /mujarrad/status` | حالة اتصال Mujarrad API |
+| `GET /health` | فحص السيرفر |
 
+## Mujarrad Space
+
+المحادثات تنزل تلقائيًا في مساحة Mujarrad. افتح:
+
+```
+https://www.mujarrad.com/spaces/chat
+```
+
+## الاختبارات
+
+```bash
+cd backend
+.venv\Scripts\python -m pytest tests -v
+```
