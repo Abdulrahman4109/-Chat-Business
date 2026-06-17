@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -9,8 +10,12 @@ from .models import ChatRecord
 
 
 API_TIMEOUT = 15
-DATA_DIR = Path(os.path.expanduser("~")) / ".mujarrad-chat"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    DATA_DIR = Path(os.path.expanduser("~")) / ".mujarrad-chat"
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+except (OSError, PermissionError):
+    DATA_DIR = Path(tempfile.gettempdir()) / ".mujarrad-chat"
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
 LOCAL_DB = DATA_DIR / "history.json"
 
 
