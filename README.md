@@ -1,26 +1,26 @@
 # ChatBusiness — Financial Chat Assistant
 
-تطبيق شات مالي ذكي يستخرج الأرقام من النصوص الطبيعية (عربي/إنجليزي)، يحسب الجدول الزمني لتحقيق الأهداف المالية، ويحفظ المحادثات عبر Mujarrad API.
+A smart financial chat app that extracts numbers from natural language (Arabic/English), calculates goal timelines, and stores conversations via Mujarrad API.
 
-## المميزات
+## Features
 
-- استخراج الدخل، المصروفات، المدخرات، والأهداف المالية من أي جملة
-- حساب المدة اللازمة لتحقيق الهدف (شهور/سنوات)
-- يدعم اللغة العربية والإنجليزية
-- حفظ المحادثات محليًا (`~/.mujarrad-chat/history.json`) وسحابيًا (Mujarrad)
-- واجهة شات مثل ChatGPT مع سجل جانبي
+- Extract income, expenses, savings, and financial goals from any sentence
+- Calculate time required to reach a financial goal (months/years)
+- Supports Arabic and English text
+- Save conversations locally (`~/.mujarrad-chat/history.json`) and to Mujarrad cloud
+- Sidebar history sorted by most recent
 
-## التقنيات
+## Stack
 
-| الطبقة | التقنية |
-|--------|---------|
+| Layer | Technology |
+|-------|-----------|
 | Backend | Python FastAPI (port 8000) |
 | Frontend | React + Vite (port 5173) |
 | AI | OpenRouter (gpt-4o-mini) — OpenAI-compatible |
 | NLP | spaCy + Regex |
 | Storage | Local JSON + Mujarrad API |
 
-## التشغيل
+## Setup
 
 ### 1. Backend
 
@@ -32,15 +32,15 @@ pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 ```
 
-انسخ `backend/.env.example` إلى `backend/.env` وضع المفاتيح المطلوبة:
+Copy `backend/.env.example` to `backend/.env` and fill in the required keys:
 
-| المتغير | الشرح |
-|---------|-------|
-| `OPENAI_API_KEY` | مفتاح OpenRouter (أو OpenAI) |
-| `MUJARRAD_PUBLIC_KEY` | public key من `npx mujarrad-cli sdk keygen` |
-| `MUJARRAD_SECRET_KEY` | secret key من `npx mujarrad-cli sdk keygen` |
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenRouter (or OpenAI) API key |
+| `MUJARRAD_PUBLIC_KEY` | Public key from `npx mujarrad-cli sdk keygen` |
+| `MUJARRAD_SECRET_KEY` | Secret key from `npx mujarrad-cli sdk keygen` |
 
-ثم:
+Then:
 
 ```bash
 uvicorn app.main:app --reload --port 8000
@@ -54,28 +54,28 @@ npm install
 npm run dev
 ```
 
-تطبق التطبيق على `http://localhost:5173`.
+Open `http://localhost:5173` in your browser.
 
 ## API Endpoints
 
-| المسار | الوظيفة |
-|--------|---------|
-| `POST /chat` | إرسال رسالة واستلام رد |
-| `GET /history?user_id=xxx` | جلب تاريخ المحادثات |
-| `POST /analyze` | تحليل مالي للنص |
-| `POST /calculate` | حساب الجدول الزمني |
-| `GET /mujarrad/status` | حالة اتصال Mujarrad API |
-| `GET /health` | فحص السيرفر |
+| Endpoint | Description |
+|----------|-------------|
+| `POST /chat` | Send a message and get AI response with financial analysis |
+| `GET /history?user_id=xxx` | Fetch conversation history for a user |
+| `POST /analyze` | Run financial analysis on text |
+| `POST /calculate` | Calculate goal timeline |
+| `GET /mujarrad/status` | Check Mujarrad API connection status |
+| `GET /health` | Server health check |
 
 ## Mujarrad Space
 
-المحادثات تنزل تلقائيًا في مساحة Mujarrad. افتح:
+Conversations are automatically synced to your Mujarrad space:
 
 ```
 https://www.mujarrad.com/spaces/chat
 ```
 
-## الاختبارات
+## Tests
 
 ```bash
 cd backend
