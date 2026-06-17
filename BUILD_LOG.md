@@ -79,21 +79,21 @@ npm run dev
 
 ```
 npx mujarrad-cli auth login
-# Email: gabdo4109@gmail.com
+# Email: ********
 # Password: ********
 npx mujarrad-cli sdk keygen --name "chat-app"
 ```
 
 النتيجة:
 ```
-Public Key:  pk_live_1L89OgCW86H5bWpoYmvDAofRi8kbHus6
-Secret Key:  sk_live_ygJ09HeVFGgy9N1c7YDR069SNw4Pf9nb3JAe6AVBOFVgJ__98WcQgCiNjRMCN-EP
+Public Key:  pk_live_******
+Secret Key:  sk_live_******
 ```
 
 إضافة المتغيرات إلى `backend/.env`:
 ```
-MUJARRAD_PUBLIC_KEY=pk_live_1L89OgCW86H5bWpoYmvDAofRi8kbHus6
-MUJARRAD_SECRET_KEY=sk_live_ygJ09HeVFGgy9N1c7YDR069SNw4Pf9nb3JAe6AVBOFVgJ__98WcQgCiNjRMCN-EP
+MUJARRAD_PUBLIC_KEY=pk_live_******
+MUJARRAD_SECRET_KEY=sk_live_******
 MUJARRAD_API_BASE=https://www.mujarrad.com/api
 MUJARRAD_SPACE_URL=https://www.mujarrad.com/spaces/chat
 ```
