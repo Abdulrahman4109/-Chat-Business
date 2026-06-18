@@ -458,7 +458,8 @@ get_history(user_id)
 | `MUJARRAD_PUBLIC_KEY` | `""` | Generate via `npx mujarrad-cli sdk keygen` |
 | `MUJARRAD_SECRET_KEY` | `""` | Generate via `npx mujarrad-cli sdk keygen` |
 | `MUJARRAD_API_BASE` | `https://www.mujarrad.com/api` | |
-| `MUJARRAD_SPACE_URL` | `https://www.mujarrad.com/spaces/chat` | |
+| `MUJARRAD_SPACE_URL` | `https://www.mujarrad.com/spaces/chat` | Chat history space |
+| `MUJARRAD_SEGMENTS_SPACE_URL` | `https://www.mujarrad.com/spaces/example` | Segment nodes space |
 | `CORS_ORIGINS` | localhost:5173, chat-business.vercel.app | |
 
 ---

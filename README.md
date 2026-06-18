@@ -77,13 +77,10 @@ Open `http://localhost:5173` in your browser.
 | `GET /mujarrad/status` | Check Mujarrad API connection status |
 | `GET /health` | Server health check |
 
-## Mujarrad Space
+## Mujarrad Spaces
 
-Conversations are automatically synced to your Mujarrad space:
-
-```
-https://www.mujarrad.com/spaces/chat
-```
+- **Chat history** → [`chat` space](https://www.mujarrad.com/spaces/chat)
+- **Financial segments** (extracted data nodes) → [`example` space](https://www.mujarrad.com/spaces/example)
 
 ## Tests
 
