@@ -37,8 +37,18 @@ Create `backend/.env` with the following keys:
 | Variable | Description |
 |----------|-------------|
 | `OPENAI_API_KEY` | API key |
-| `MUJARRAD_PUBLIC_KEY` | Public key from `npx mujarrad-cli sdk keygen` |
-| `MUJARRAD_SECRET_KEY` | Secret key from `npx mujarrad-cli sdk keygen` |
+| `MUJARRAD_PUBLIC_KEY` | Public key from Mujarrad CLI |
+| `MUJARRAD_SECRET_KEY` | Secret key from Mujarrad CLI |
+
+To generate these keys, first install the Mujarrad CLI:
+
+```bash
+npm install -g mujarrad-cli
+# or run directly without installing:
+npx mujarrad-cli sdk keygen
+```
+
+This outputs a public key and secret key pair. Add them to `.env`.
 
 Then:
 

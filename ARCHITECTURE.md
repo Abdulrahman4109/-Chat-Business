@@ -455,8 +455,8 @@ get_history(user_id)
 | `OPENAI_API_KEY` | `""` | Falls back to heuristic |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | |
 | `OPENAI_MODEL` | `gpt-4o-mini` | |
-| `MUJARRAD_PUBLIC_KEY` | `""` | |
-| `MUJARRAD_SECRET_KEY` | `""` | |
+| `MUJARRAD_PUBLIC_KEY` | `""` | Generate via `npx mujarrad-cli sdk keygen` |
+| `MUJARRAD_SECRET_KEY` | `""` | Generate via `npx mujarrad-cli sdk keygen` |
 | `MUJARRAD_API_BASE` | `https://www.mujarrad.com/api` | |
 | `MUJARRAD_SPACE_URL` | `https://www.mujarrad.com/spaces/chat` | |
 | `CORS_ORIGINS` | localhost:5173, chat-business.vercel.app | |
