@@ -17,6 +17,7 @@ from .models import (
 )
 from .nlp import extract_numbers
 from .openai_service import OpenAIExtractionService
+from .segmenter import segment_text
 from .storage import MujarradStorage
 
 
@@ -61,10 +62,30 @@ async def chat(request: ChatRequest) -> ChatResponse:
     conversation_id = request.conversation_id or str(uuid4())
 
     token_numbers = extract_numbers(request.message)
+    service = OpenAIExtractionService()
 
     try:
-        extracted = await OpenAIExtractionService().extract(request.message, token_numbers)
+        # 1️⃣ تقسيم النص لقطع (segments) باستخدام regex — دقيق مع العربي
+        segments = segment_text(request.message)
+
+        # 2️⃣ حفظ RAW segments كـ nodes في Mujarrad
+        storage = MujarradStorage()
+        raw_segments = [{"text": s, "classifications": []} for s in segments]
+        for idx, raw in enumerate(raw_segments):
+            await storage.save_segment_node(raw, conversation_id, request.user_id, idx)
+
+        # 3️⃣ LLM #2 يستخرج المعلومات المالية من الـ segments
+        extracted = await service.extract(
+            request.message, token_numbers, segments
+        )
         calculation = calculate_goal(extracted)
+
+        # 4️⃣ تحديث segment nodes بالتصنيفات
+        for idx, seg in enumerate(extracted.segments):
+            if seg.get("classifications"):
+                await storage.update_segment_node(
+                    seg, conversation_id, request.user_id, idx
+                )
 
         assistant_text = build_assistant_response(calculation)
 
@@ -86,9 +107,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
             calculation=calculation,
         )
 
-        # ✅ حفظ السجل بشكل صريح
+        # 5️⃣ حفظ سجل المحادثة كامل
         try:
-            storage = MujarradStorage()
             await storage.save_chat_record(record)
         except Exception as e:
             print("Storage error:", e)

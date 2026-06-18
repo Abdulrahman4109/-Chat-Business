@@ -47,6 +47,22 @@ def extract_numbers(text: str) -> list[float]:
     return _dedupe([*pattern_numbers, *token_numbers])
 
 
+def extract_entities(text: str) -> list[dict]:
+    """Use spaCy NER to detect financial entities (MONEY, DATE, CARDINAL, etc.)"""
+    nlp = get_nlp()
+    if nlp is None:
+        return []
+    try:
+        doc = nlp(text)
+        entities = []
+        for ent in doc.ents:
+            if ent.label_ in ("MONEY", "DATE", "CARDINAL", "PERCENT", "QUANTITY", "TIME"):
+                entities.append({"text": ent.text, "label": ent.label_})
+        return entities
+    except Exception:
+        return []
+
+
 def _dedupe(values: Iterable[float]) -> list[float]:
     seen = set()
     result = []

@@ -19,7 +19,13 @@ Thumbs.db
 # IDE
 .claude/
 
-# Project temp
+# History backups
 .history/
+
+# Logs
+server.log
+
+# Nested scripts dir (duplicate)
+backend/scripts/scripts/
 
 

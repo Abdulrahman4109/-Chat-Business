@@ -23,6 +23,7 @@ class FinancialData(BaseModel):
     goals: list[dict[str, Any]] = Field(default_factory=list)
     all_numbers: list[float] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
+    segments: list[dict[str, Any]] = Field(default_factory=list)
 
     @field_validator("goal_price", "monthly_income", "monthly_expenses", "current_savings", "extra_income")
     @classmethod

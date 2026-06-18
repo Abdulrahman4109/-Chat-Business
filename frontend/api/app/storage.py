@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from uuid import uuid4
 from .config import get_settings
 from .models import ChatRecord
 
@@ -24,6 +25,7 @@ class MujarradStorage:
         self.settings = get_settings()
         self.base_url = self.settings.mujarrad_api_base.rstrip("/")
         self.slug = self.settings.mujarrad_space_slug
+        self.segments_slug = self.settings.mujarrad_segments_space_slug
         self.headers = {
             "Content-Type": "application/json",
             "X-API-Key": self.settings.mujarrad_public_key,
@@ -70,6 +72,38 @@ class MujarradStorage:
                 response.raise_for_status()
         except Exception as e:
             print("Mujarrad remote save skipped:", e)
+
+    async def save_segment_node(
+        self, segment_data: dict, conversation_id: str, user_id: str, segment_index: int
+    ) -> None:
+        payload = {
+            "title": f"seg-{conversation_id}-{segment_index}",
+            "nodeType": "REGULAR",
+            "nodeDetails": {
+                "id": str(uuid4()),
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "segment_index": segment_index,
+                "text": segment_data.get("text", ""),
+                "classifications": segment_data.get("classifications", []),
+            },
+        }
+        try:
+            async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
+                response = await client.post(
+                    f"{self.base_url}/spaces/{self.segments_slug}/nodes",
+                    json=payload,
+                    headers=self.headers,
+                )
+                print("Mujarrad SEGMENT POST:", response.status_code, response.text)
+                response.raise_for_status()
+        except Exception as e:
+            print("Mujarrad segment save skipped:", e)
+
+    async def update_segment_node(
+        self, segment_data: dict, conversation_id: str, user_id: str, segment_index: int
+    ) -> None:
+        await self.save_segment_node(segment_data, conversation_id, user_id, segment_index)
 
     async def get_history(self, user_id: str) -> list[dict[str, Any]]:
         local = self._load_local()
@@ -118,7 +152,12 @@ class MujarradStorage:
                 if response.status_code == 401:
                     return {"connected": False, "error": "Invalid API keys"}
                 response.raise_for_status()
-                return {"connected": True, "space": self.slug, "api": self.base_url}
+                return {
+                    "connected": True,
+                    "space": self.slug,
+                    "segments_space": self.segments_slug,
+                    "api": self.base_url,
+                }
         except httpx.ConnectError:
             return {"connected": False, "error": f"Cannot reach {self.base_url}"}
         except Exception as e:
