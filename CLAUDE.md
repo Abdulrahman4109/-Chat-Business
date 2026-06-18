@@ -3,7 +3,7 @@
 ## Stack
 - **Backend**: Python FastAPI (port 8000, uvicorn)
 - **Frontend**: React 19 + Vite (port 5173, proxy → 8001)
-- **AI**: gpt-4o-mini via OpenRouter (OpenAI-compatible)
+- **AI**: gpt-4o-mini via OpenAI API
 - **Storage**: Local JSON (`~/.mujarrad-chat/history.json`) + Mujarrad API sync
 - **Deploy**: Vercel (Mangum handler in `backend/api/index.py`)
 
@@ -16,7 +16,7 @@
 | `/calculate` | POST | `{data: FinancialData}` | `CalculationResult` |
 | `/chat` | POST | `{message, user_id, conversation_id?}` | `{conversation_id, assistant_message, extracted_data, calculation}` |
 | `/history` | GET | `?user_id=` | `list[ChatRecord]` |
-| `/mujarrad/status` | GET | — | `{connected, space, api}` |
+| `/mujarrad/status` | GET | — | `{connected, space, segments_space, api}` |
 
 ## Pydantic Models (`backend/app/models.py`)
 
@@ -32,22 +32,31 @@
 ## Extraction Pipeline (`/chat` flow)
 
 1. **`nlp.extract_numbers(message)`** — regex + spaCy tokenizer → `list[float]`
-2. **`openai_service.OpenAIExtractionService.extract(message, token_numbers)`**:
-   - First runs `heuristics.heuristic_extract()` for fallback
-   - If API key set: calls GPT with `response_format={"type": "json_object"}`, temperature=0
-   - Merges AI + heuristic via `merge_extractions()`
-3. **`calculator.calculate_goal(data)`**:
+2. **LLM #1 — `OpenAIExtractionService.segment_with_llm(message)`**:
+   - Calls GPT with `SEGMENTER_PROMPT` → `{"segments": [...]}`
+   - Falls back to `segmenter.segment_text()` (regex) if LLM unavailable/fails
+3. RAW segment nodes saved to Mujarrad `example` space (best-effort)
+4. **LLM #2 — `OpenAIExtractionService.extract(message, token_numbers, segments)`**:
+   - If no API key → `heuristic_extract()` fallback (numbers only, no field classification)
+   - If API key set: calls GPT with `EXTRACTION_PROMPT`, temperature=0
+   - Returns LLM extraction directly (no merge)
+5. **`_aggregate_segment_extractions()`** — sums same fields across segments, builds `segments[]` list with classifications
+6. Updates segment nodes in Mujarrad with classifications
+7. **`calculator.calculate_goal(data)`**:
    - `net_monthly_savings = income + extra - expenses`
    - `remaining = max(goal - savings, 0)`
    - `raw_months = remaining / net_savings` → `ceil()`
-4. **`storage.MujarradStorage.save_chat_record(record)`** — saves locally then async POSTs to Mujarrad
+8. **`storage.MujarradStorage.save_chat_record(record)`** — saves locally then async POSTs to Mujarrad
 
 ## Heuristics (`backend/app/heuristics.py`)
 
+- **Purpose**: Pure number-extraction fallback. No keyword classification.
 - `normalize_text()` — translates Arabic-Indic digits (٠-٩, ۰-۹) to Western digits
 - `extract_number_mentions()` — regex `(?:[$€£])?\s*\d+(?:,\d{3})*(?:\.\d+)?[kKmM]?`
-- `heuristic_extract()` — scores each number mention against 6 field keyword lists (context window ±42 chars), picks best field based on proximity. Falls back to largest unclassified number if goal language detected
-- `merge_extractions()` — goal_price from AI, rest = `max(primary, fallback)`
+- `heuristic_extract()` — extracts numbers into `all_numbers` only, no field classification
+- `merge_extractions()` — **REMOVED** (LLM is sole classifier)
+- `_classify_mention()` / `_score_context()` / `_has_goal_language()` / `FIELD_PRIORITY` — **REMOVED** (no keywords)
+- `FIELD_KEYWORDS` — **REMOVED** (LLM understands fields without keywords)
 - `apply_intelligent_defaults()` — fills None→0, creates `goals` list from `goal_price`
 
 ## Calculator (`backend/app/calculator.py`)
@@ -69,22 +78,25 @@
 | Field | Default |
 |-------|---------|
 | `openai_api_key` | `""` |
-| `openai_base_url` | `https://openrouter.ai/api/v1` |
+| `openai_base_url` | `""` (defaults to `https://api.openai.com/v1`) |
 | `openai_model` | `gpt-4o-mini` |
 | `mujarrad_public_key` | `""` |
 | `mujarrad_secret_key` | `""` |
 | `mujarrad_api_base` | `https://www.mujarrad.com/api` |
 | `mujarrad_space_url` | `https://www.mujarrad.com/spaces/chat` |
+| `mujarrad_segments_space_url` | `https://www.mujarrad.com/spaces/example` |
 | `cors_origins` | `"http://localhost:5173,http://127.0.0.1:5173,https://chat-business.vercel.app"` |
 
-Properties: `cors_origin_list` (splits by comma), `mujarrad_space_slug` (last URL segment → "chat")
+Properties: `cors_origin_list` (splits by comma), `mujarrad_space_slug` (last URL segment → "chat"), `mujarrad_segments_space_slug` (last URL segment → "example")
 
 ## Storage (`backend/app/storage.py`)
 
 - `MujarradStorage.__init__()` reads settings, builds headers (`X-API-Key`, `X-API-Secret`)
+- Two space slugs: `self.slug` (chat history → `chat` space), `self.segments_slug` (financial nodes → `example` space)
 - `_load_local()` / `_save_local()` — reads/writes `~/.mujarrad-chat/history.json`
-- `save_chat_record()` — always saves locally, tries async POST to Mujarrad (logs errors, never raises)
-- `get_history()` — loads local filtered by user_id, then tries Mujarrad GET (paginated, size=50), saves remote data locally if successful, falls back to local
+- `save_chat_record()` — saves to `chat` space (always local + async POST to Mujarrad)
+- `save_segment_node()` / `update_segment_node()` — saves to `example` space (async POST, never raises)
+- `get_history()` — loads local filtered by user_id, then tries Mujarrad GET from `chat` space (paginated, size=50), saves remote data locally if successful, falls back to local
 - `check_connection()` — GET `{base_url}/spaces/{slug}/nodes?size=1`, returns specific error for 401/ConnectError
 
 ## Frontend (`frontend/src/main.jsx`)
@@ -96,15 +108,16 @@ Properties: `cors_origin_list` (splits by comma), `mujarrad_space_slug` (last UR
 - **API base**: `import.meta.env.VITE_API_BASE_URL || ''` (Vite proxy handles `/chat`, `/history`, etc. → `localhost:8001`)
 
 ## Mujarrad API
-- **Space slug**: `chat`
+- **Chat space slug**: `chat`
+- **Segments space slug**: `example`
 - **Auth**: `X-API-Key` (public) + `X-API-Secret` (secret)
 - **Endpoints**: `POST/GET /api/spaces/{slug}/nodes`
-- **Payload**: `{title: "chat-{id}", nodeType: "REGULAR", nodeDetails: <ChatRecord dict>}`
-- **Web UI**: `https://www.mujarrad.com/spaces/chat`
+- **Payload**: `{title: "chat-{id}", nodeType: "REGULAR", nodeDetails: <ChatRecord dict>}` (for chat records); `{title: "seg-{conv}-{idx}", nodeType: "SEGMENT", nodeDetails: {...}}` (for segments)
+- **Web UI**: `https://www.mujarrad.com/spaces/chat` (history), `https://www.mujarrad.com/spaces/example` (segments)
 
 ## Storage Flow
 1. Chat → save to `~/.mujarrad-chat/history.json` (always, synchronous)
-2. Backend → async POST to Mujarrad API (best-effort, logs errors)
+2. Backend → async POST chat record to `chat` space, segment nodes to `example` space (best-effort, logs errors)
 3. History load: local first, then Mujarrad API for fresher data, save if remote succeeds
 4. Sidebar sorted by most recent conversation
 
@@ -128,7 +141,7 @@ chat/
 │   │   └── schema.json    ← Mujarrad node schema
 │   ├── api/index.py       ← Vercel Mangum handler
 │   ├── vercel.json
-│   └── tests/             ← 41 tests (calculator, heuristics, models, nlp)
+│   └── tests/             ← 76 tests (calculator, heuristics, models, nlp, segmenter, openai_service)
 ├── frontend/
 │   ├── package.json       ← react, lucide-react, vite
 │   ├── vite.config.js     ← proxy /chat, /history etc. → localhost:8001
@@ -157,36 +170,42 @@ npm run dev    # starts on localhost:5173, proxy → localhost:8001
 npm run build
 ```
 
-## Tests (41 total)
+## Tests (76 total)
 | File | Tests |
 |------|-------|
 | `tests/test_calculator.py` | 10: goal calc, formatting, suggestions |
-| `tests/test_heuristics.py` | 14: normalize, extract, classify, merge |
+| `tests/test_heuristics.py` | 10: normalize, extract |
 | `tests/test_models.py` | 8: defaults, validation, serialization |
 | `tests/test_nlp.py` | 10: basic numbers, currency, Arabic digits, dedup, attached to Arabic text |
-| `tests/test_openai_service.py` | 4: heuristic fallback, English/Arabic merge |
+| `tests/test_openai_service.py` | 15: heuristic fallback, aggregation, segments |
+| `tests/test_segmenter.py` | 9: empty, English/Arabic split, conjunctions, max segments |
 
 No tests for `storage.py` or `main.py` (async/API tests missing).
 
-## Recent Fixes (June 2026)
+## Recent Changes
 
-### 1. English keywords expanded (`heuristics.py`)
-Added missing English keywords: `have`, `take home`, `net salary`, `purchase`, `bonuses`, `side hustle`, `per diem`, `gig work`, `emergency fund`, `utilities`, `mortgage`, `full time`, `day job`, `afford`, etc.
+### 10. OpenRouter removed, response_format removed, timeouts increased
+- `openai_base_url` default changed from `https://openrouter.ai/api/v1` → `""` (uses default OpenAI API)
+- Removed `response_format={"type": "json_object"}` from both LLM calls (OpenRouter didn't support it reliably)
+- Added `_parse_json_from_text()` helper to extract JSON from any LLM response (handles markdown, extra text)
+- Increased timeouts: segmenter 5s→10s, extractor 8s→10s
+- Improved SEGMENTER_PROMPT with Arabic attached-number examples (800000ولدي, ادخار20000)
+- Improved EXTRACTION_PROMPT with Arabic financial examples
 
-### 2. Keyword scoring fix (`heuristics.py:_score_context`)
-**Before**: `+5` bonus for keywords appearing **before** the number (caused "4,000 bonuses" to be classified as income because "salary" preceded it).
-**After**: `+2..0` bonus for keywords appearing **≤2 chars after** the number (e.g., "4,000 bonuses" → "bonuses" wins).
+### 9. Two-LLM pipeline (segmenter + extractor)
+- **LLM #1** (`segment_with_llm` in `openai_service.py`): Takes raw text, returns `{"segments": [...]}` via GPT with `SEGMENTER_PROMPT`. Falls back to regex `segmenter.py` if LLM fails.
+- **LLM #2** (`extract` in `openai_service.py`): Takes segments from LLM #1, extracts financial data with `EXTRACTION_PROMPT`.
+- `main.py` updated: creates one `OpenAIExtractionService`, calls `segment_with_llm()` then `extract()`.
 
-### 3. Merge fix (`heuristics.py:merge_extractions`)
-**Before**: `max(AI, fallback)` → wrong AI value (e.g., savings=800k) overrides correct heuristic (200k).
-**After**: Prefers the value that appears in extracted `all_numbers` when AI and heuristic disagree.
+### 8. FIELD_KEYWORDS and merge_extractions removed (`heuristics.py`)
+- **Removed** `FIELD_KEYWORDS` dict entirely, along with `_classify_mention`, `_score_context`, `_has_goal_language`, `FIELD_PRIORITY`
+- **Removed** `merge_extractions()` function — LLM is now the sole classifier
+- **Removed** 5 merge/extraction tests (76 total now)
+- `heuristic_extract()` now only extracts numbers into `all_numbers` with no field classification
+- Pipeline: segmenter → LLM → calculator (no heuristic merge)
 
-### 4. JSON timeout fix (`openai_service.py`)
-- Added `timeout=8, max_retries=0` to OpenAI client (prevents Vercel 10s timeout killing the function)
-- Wrapped API call + `json.loads` in `try/except` → falls back to heuristic on ANY failure
-
-### 5. Frontend resilience (`frontend/src/main.jsx`)
-- Catches non-JSON responses (HTML timeout pages) instead of crashing with SyntaxError
+### 7. Segments saved to separate Mujarrad space
+Chat history → `chat` space, financial segment nodes → `example` space (`mujarrad_segments_space_url` config). Added `segments_slug` to `MujarradStorage`, updated `save_segment_node`/`update_segment_node` to target the segments space.
 
 ## Notes
 - `spaCy` is NOT in requirements.txt (optional import in `nlp.py`)
