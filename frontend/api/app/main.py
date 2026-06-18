@@ -1,6 +1,7 @@
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from .calculator import calculate_goal
 from .config import get_settings
@@ -30,6 +31,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.options("/{path:path}")
+async def options_handler():
+    return Response(status_code=200)
 
 @app.get("/health")
 async def health() -> dict[str, str]:
