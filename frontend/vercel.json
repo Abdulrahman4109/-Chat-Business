@@ -1,0 +1,9 @@
+{
+  "builds": [
+    { "src": "api/index.py", "use": "@vercel/python" }
+  ],
+  "routes": [
+    { "src": "/(chat|history|health|analyze|calculate|mujarrad/.*)", "dest": "api/index.py" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
