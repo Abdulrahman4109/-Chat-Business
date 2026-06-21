@@ -30,6 +30,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const bottomRef = useRef(null);
+  const abortRef = useRef(null);
 
   useEffect(() => {
     loadHistory();
@@ -51,6 +52,14 @@ function App() {
     }
   }
 
+  function cancelRequest() {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setLoading(false);
+  }
+
   async function sendMessage(event) {
     event.preventDefault();
     const text = input.trim();
@@ -61,11 +70,15 @@ function App() {
     setInput('');
     setLoading(true);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const response = await fetch(`${API_BASE_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, user_id: userId, conversation_id: conversationId }),
+        signal: controller.signal,
       });
       const textBody = await response.text();
       let payload;
@@ -79,6 +92,7 @@ function App() {
       setMessages((current) => [...current, payload.assistant_message]);
       loadHistory();
     } catch (error) {
+      if (error.name === 'AbortError') return;
       setMessages((current) => [
         ...current,
         {
@@ -89,10 +103,10 @@ function App() {
       ]);
     } finally {
       setLoading(false);
+      abortRef.current = null;
     }
   }
 
-  // ✅ التعديل هنا فقط
   const groupedHistory = useMemo(() => {
     const map = new Map();
 
@@ -149,7 +163,6 @@ function App() {
 
                 setConversationId(group.id);
 
-                // ✅ التعديل هنا فقط
                 if (rebuilt.length) {
                   setMessages(rebuilt);
                 }
@@ -176,7 +189,7 @@ function App() {
           {messages.map((message) => (
             <Message key={message.id} message={message} />
           ))}
-          {loading && <div className="typing">Analyzing numbers and calculating timeline...</div>}
+          {loading && <div className="typing">Analyzing numbers and calculating timeline... <button className="cancelBtn" onClick={cancelRequest}>Cancel</button></div>}
           <div ref={bottomRef} />
         </section>
 
@@ -212,6 +225,8 @@ function Message({ message }) {
             <Metric label="Income" value={data.monthly_income} />
             <Metric label="Expenses" value={data.monthly_expenses} />
             <Metric label="Savings" value={data.current_savings} />
+            <Metric label="Debts" value={data.current_debts} />
+            {data.current_debts ? <Metric label="Net Savings" value={(data.current_savings || 0) - data.current_debts} /> : null}
             <Metric label="Extra" value={data.extra_income} />
           </div>
         )}
@@ -228,10 +243,11 @@ function Message({ message }) {
 }
 
 function Metric({ label, value }) {
+  if (value === null || value === undefined) return null;
   return (
     <div className="metric">
       <span>{label}</span>
-      <strong>{value === null || value === undefined ? '0' : formatMoney(value)}</strong>
+      <strong>{formatMoney(value)}</strong>
     </div>
   );
 }

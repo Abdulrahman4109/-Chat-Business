@@ -1,7 +1,7 @@
 import pytest
 from app.heuristics import heuristic_extract
 from app.models import FinancialData
-from app.openai_service import _aggregate_segment_extractions
+from app.openai_service import _aggregate_segment_extractions, normalize_value, TIME_UNITS
 
 
 class TestExtractionFallback:
@@ -37,12 +37,13 @@ class TestAggregateSegmentExtractions:
         assert result.segments == []
 
     def test_single_field_extraction(self):
-        extractions = [{"segment_index": 0, "field": "monthly_income", "value": 5000}]
+        extractions = [{"segment_index": 0, "field": "monthly_income", "raw_value": 5000, "time_unit": ""}]
         result = _aggregate_segment_extractions(extractions, [5000], ["I earn 5000"])
         assert result.monthly_income == 5000.0
         assert len(result.segments) == 1
         assert result.segments[0]["text"] == "I earn 5000"
-        assert result.segments[0]["classifications"] == [{"field": "monthly_income", "value": 5000}]
+        assert result.segments[0]["classifications"][0]["field"] == "monthly_income"
+        assert result.segments[0]["classifications"][0]["raw_value"] == 5000.0
 
     def test_multiple_fields_same_segment(self):
         extractions = [
@@ -130,3 +131,32 @@ class TestAggregateSegmentExtractions:
     def test_uses_all_numbers(self):
         result = _aggregate_segment_extractions([], [1000, 2000, 3000], [])
         assert result.all_numbers == [1000.0, 2000.0, 3000.0]
+
+    def test_multiple_current_savings_summed(self):
+        extractions = [
+            {"segment_index": 0, "field": "current_savings", "value": 20000},
+            {"segment_index": 1, "field": "current_savings", "value": 1666},
+        ]
+        segments_text = ["savings 20000", "stocks worth 1666"]
+        result = _aggregate_segment_extractions(extractions, [20000, 1666], segments_text)
+        assert result.current_savings == 21666.0
+        assert len(result.segments) == 2
+
+
+class TestNormalizeValue:
+    def test_no_unit(self):
+        assert normalize_value(5000, "") == 5000
+
+    def test_weekly(self):
+        assert normalize_value(900, "weekly") == 3857.13
+
+    def test_daily(self):
+        assert normalize_value(100, "daily") == 3000
+
+    def test_yearly(self):
+        assert normalize_value(12000, "yearly") == 1000
+
+    def test_old_value_field_backward_compat(self):
+        extractions = [{"segment_index": 0, "field": "monthly_income", "value": 5000}]
+        result = _aggregate_segment_extractions(extractions, [5000], ["earn 5000"])
+        assert result.monthly_income == 5000.0

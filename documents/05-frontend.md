@@ -18,19 +18,23 @@ React 19 + Vite single-page application with dark theme.
 | `history[]` | ChatRecord[] | GET /history | All past conversations |
 | `loading` | boolean | | Loading indicator |
 | `sidebarOpen` | boolean | | Mobile sidebar toggle |
+| `abortRef` | ref | AbortController | Cancel in-flight request |
 
 **Key Handlers:**
-- `sendMessage()` → POST /chat with message + userId + conversationId
+- `sendMessage()` → POST /chat with message + userId + conversationId (uses AbortController)
+- `cancelRequest()` → aborts fetch signal, resets loading
 - `loadHistory()` → GET /history?user_id=
 - Sidebar "New goal" → resets conversationId, shows welcome message
 - Sidebar history item → rebuilds messages from saved ChatRecords
+- Cancel button appears in typing indicator during loading
 
 ### `Message` (chat bubble — `main.jsx`)
 
 Renders a chat bubble containing:
 1. **Text content** (`.bubble p`)
 2. **Analysis grid** (`.analysisGrid`) — if `message.extracted_data` exists:
-   - Goal, Income, Expenses, Savings, Extra — each as a `Metric` component
+   - Goal, Income, Expenses, Savings, Extra, Debts — each as a `Metric` component
+   - Net Savings row shown conditionally when `current_debts` exists
 3. **Result panel** (`.resultPanel`) — if `message.calculation` exists:
    - Duration display (e.g., "3 years and 5 months")
    - Net monthly savings
@@ -39,6 +43,7 @@ Renders a chat bubble containing:
 ### `Metric` (label+value card)
 
 Simple display component: label (e.g., "Goal") + formatted number (e.g., "800,000").
+Returns `null` when value is `null` or `undefined` — unmentioned fields are hidden entirely.
 
 ---
 
@@ -57,6 +62,16 @@ In development, Vite proxies:
 ```
 
 **Why 8001 not 8000?** The Vite dev server runs on 5173 and proxies to 8001. The backend can run on either — the proxy configuration targets 8001.
+
+---
+
+## Cancel Button
+
+When `loading` is true, a **Cancel** button appears next to the typing indicator. Clicking it:
+1. Aborts the in-flight `fetch` request via `AbortController`
+2. Resets `loading` to false
+3. Does NOT send an error message to the chat
+4. User can resend a corrected message
 
 ---
 

@@ -19,126 +19,146 @@ def _parse_json_from_text(text: str) -> dict:
     return json.loads(text)
 
 
-SEGMENTER_PROMPT = """Split the message into meaningful segments at natural boundaries.
+SEGMENTER_PROMPT = """Split the message into segments at natural boundaries. Each segment = one complete financial thought.
 
-Each segment should be one complete thought. Split at sentence endings (.!?؟) and major topical shifts. Keep numbers attached to their context.
-
-Return at most 12 segments.
-
-Examples:
-Input: "I want a car worth 600000. I have 200000 saved. My salary is 10000 and expenses are 4000."
-Output: ["I want a car worth 600000.", "I have 200000 saved.", "My salary is 10000 and expenses are 4000."]
-
-Input: "اريد شراء عربة 800000ولدي ادخار20000 مرتب 50000 اسبوعي"
-Output: ["اريد شراء عربة 800000", "ولدي ادخار20000", "مرتب 50000 اسبوعي"]
+Split at sentence endings (.!?؟) and topical shifts. Keep numbers attached to their context. Max 12 segments.
 
 Return ONLY valid JSON: {"segments": ["...", "..."]}
 """
 
-EXTRACTION_PROMPT = """You are a precise financial data extraction engine. Analyze each text segment independently.
-
-For each segment that contains financial information, extract ALL numeric values and classify each into the correct field. CRITICAL: Normalize ALL time units to MONTHLY equivalent before returning the value.
-
-Precise time normalization (standard month = 30 days):
-| Input | Conversion | Formula |
-|-------|-----------|---------|
-| per hour / hourly / بالساعة | × 171.43 | 40h/week × 30/7 days |
-| per day / daily / يومياً / في اليوم | × 30 | 30 days/month |
-| per week / weekly / اسبوعياً / في الاسبوع / أسبوعياً / كل اسبوع | × 4.2857 | 30 ÷ 7 |
-| per 2 weeks / bi-weekly / كل اسبوعين / كل 14 يوم / 15 يوم | × 2.1429 | 30 ÷ 14 |
-| per 10 days / كل 10 ايام / عشرة ايام | × 3 | 30 ÷ 10 |
-| per month / monthly / شهرياً / في الشهر | as is | — |
-| semi-monthly / twice monthly / نصف شهري / مرتين بالشهر / كل 15 يوم | × 2 | 2× per month |
-| per 3 months / quarterly / كل 3 شهور / ربع سنوي | ÷ 3 | 3 months |
-| per 6 months / semi-annually / كل 6 شهور / نصف سنوي | ÷ 6 | 6 months |
-| per year / yearly / annually / سنوياً / في السنة / كل سنة | ÷ 12 | 12 months |
-| per 2 years / biennially / كل سنتين | ÷ 24 | 24 months |
-If NO time unit mentioned → assume monthly, keep as is
-
-CRITICAL: The conversion table at the top applies to EVERY field equally — monthly_income, monthly_expenses, AND extra_income. ALWAYS normalize to monthly. DO NOT copy example values — COMPUTE using the table multiplier. If input differs from examples, calculate fresh: value × multiplier from table. When NO time unit is mentioned, keep the value as-is (already monthly).
-
-Examples (format reference, do NOT copy values):
-=== monthly_income ===
-- "مرتب 10000" -> 10000
-- "5000 salary" -> 5000
-- "مرتب 100 في الساعة" -> 17143
-- "50 per hour" -> 8572
-- "100 per day" -> 3000
-- "مرتب 50000 اسبوعي" -> 214286
-- "4,000 per week" -> 17143
-- "راتب 30000 كل اسبوعين" -> 64286
-- "مرتب 100000 كل 10 ايام" -> 300000
-- "quarterly salary 90000" -> 30000
-- "مرتب 600000 سنوي" -> 50000
-- "120000 per year" -> 10000
-
-=== monthly_expenses ===
-- "مصاريف 10000" -> 10000
-- "rent 2000" -> 2000
-- "ايجار 900 اسبوعي" -> 3857
-- "rent 500 per week" -> 2143
-- "900 per week expenses" -> 3857
-- "30 per day expenses" -> 900
-- "bills 12000 quarterly" -> 4000
-- "مصاريف 60000 سنوي" -> 5000
-- "insurance 12000 per year" -> 1000
-
-=== extra_income ===
-- "حوافز 4000" -> 4000
-- "اضافي 2000" -> 2000
-- "bonus 1500" -> 1500
-- "بونص 1000 اسبوعي" -> 4286
-- "100 per week bonus" -> 429
-- "overtime 20 per hour" -> 3429
-- "freelance 300 per day" -> 9000
-- "عمولة 60000 سنوي" -> 5000
-- "side hustle 12000 per year" -> 1000
-
-=== current_savings (static — do NOT normalize) ===
-- "عندي 20000 في البنك" -> 20000
-- "savings 10000" -> 10000
-
-=== goal_price (static — do NOT normalize) ===
-- "اريد شراء عربة 800000" -> 800000
-- "i want a car worth 600000" -> 600000
-
-=== comprehensive English example ===
-Input: "I want to buy a car worth 800,000. I have 20,000 in savings. My income is 4,000 per week, with weekly expenses of 900. I also receive 4,000 in bonuses and have an additional income of 2,000."
-Computation: income=4000×4.2857=17143, expenses=900×4.2857=3857, bonuses=4000, extra=2000+4000=6000
-Output: [{"segment_index":0,"field":"goal_price","value":800000},{"segment_index":1,"field":"current_savings","value":20000},{"segment_index":2,"field":"monthly_income","value":17143},{"segment_index":2,"field":"monthly_expenses","value":3857},{"segment_index":3,"field":"extra_income","value":6000}]
-
-Fields:
-- "goal_price": target cost, purchase price, goal amount, what the user wants to buy or save for
-- "monthly_income": salary, wage, base recurring income from primary job (ALWAYS normalized to monthly)
-- "monthly_expenses": spending, rent, bills, costs, outgoings (ALWAYS normalized to monthly)
-- "current_savings": amount ALREADY saved, bank balance, cash on hand (NOT recurring, keep as-is)
-- "extra_income": bonuses, commissions, overtime, side income, freelance, part-time, tips (ALWAYS normalized to monthly)
-
-Numbers may use comma separators (e.g. 4,000 = 4000, 800,000 = 800000). Strip commas before computing multiplication.
-
-Return ONLY valid JSON with this exact shape:
-{
-  "extractions": [
-    {"segment_index": 0, "field": "monthly_income", "value": 5000.0}
-  ]
+TIME_UNITS = {
+    "hourly": 171.43, "per hour": 171.43, "بالساعة": 171.43, "كل ساعة": 171.43,
+    "daily": 30, "per day": 30, "يومياً": 30, "في اليوم": 30, "في يوم": 30, "يومي": 30, "يومية": 30, "يوميا": 30, "كل يوم": 30,
+    "weekly": 4.2857, "per week": 4.2857, "اسبوعياً": 4.2857, "في الاسبوع": 4.2857, "في الأسبوع": 4.2857, "كل اسبوع": 4.2857, "كل أسبوع": 4.2857, "أسبوعياً": 4.2857, "اسبوعي": 4.2857, "اسبوع": 4.2857, "اسبوعيه": 4.2857, "أسبوعي": 4.2857,
+    "biweekly": 2.1429, "bi-weekly": 2.1429, "كل اسبوعين": 2.1429, "كل أسبوعين": 2.1429, "كل 14 يوم": 2.1429, "15 يوم": 2.1429, "اسبوعين": 2.1429,
+    "tendays": 3, "كل 10 ايام": 3, "كل 10 أيام": 3, "عشرة ايام": 3, "عشرة أيام": 3,
+    "monthly": 1, "per month": 1, "شهرياً": 1, "في الشهر": 1, "شهري": 1, "شهر": 1, "شهرية": 1, "شهريه": 1, "شهريا": 1, "كل شهر": 1, "شهري": 1,
+    "semimonthly": 2, "semi-monthly": 2, "نصف شهري": 2, "مرتين بالشهر": 2,
+    "quarterly": 1/3, "كل 3 شهور": 1/3, "كل ٣ شهور": 1/3, "ربع سنوي": 1/3, "ربع سنة": 1/3,
+    "semiannually": 1/6, "semi-annually": 1/6, "كل 6 شهور": 1/6, "كل ٦ شهور": 1/6, "نصف سنوي": 1/6, "نصف سنة": 1/6,
+    "yearly": 1/12, "per year": 1/12, "annually": 1/12, "سنوياً": 1/12, "في السنة": 1/12, "كل سنة": 1/12, "سنوي": 1/12, "سنويه": 1/12, "سنوية": 1/12, "سنة": 1/12, "سنويا": 1/12, "كل عام": 1/12,
+    "biennially": 1/24, "كل سنتين": 1/24, "سنتين": 1/24, "كل عامين": 1/24,
 }
 
-Rules:
-- Segment with NO financial data -> omit from extractions entirely
-- One segment may produce MULTIPLE extractions for different fields
-- Convert shorthand: 5k = 5000, 2m = 2000000
-- NEVER classify base salary/wage as extra_income
-- NEVER classify bonuses/commission as monthly_income
-- "salary", "wage", "base pay", "earn" -> monthly_income
-- "bonuses", "commission", "side", "freelance", "overtime", "tips" -> extra_income
-- "want", "buy", "goal", "target", "save for" with amount -> goal_price
-- "saved", "savings", "already have", "bank", "cash" -> current_savings
-- "spend", "expenses", "rent", "bills", "cost" -> monthly_expenses
-- Arabic hints: راتب/مرتب = monthly_income, مصاريف/ايجار/فواتير = monthly_expenses,
-  مدخرات/عندي/معايا = current_savings, بونص/اضافي/حوافز = extra_income,
-  عايز/هدف/سعر = goal_price
+# General regex patterns for time units not in the dictionary (e.g. "every 2 months", "each week")
+_TIME_GENERAL_PATTERNS = [
+    (r'كل\s+(\d+)\s+(شهر|شهور|سنة|سنين|ايام|اسابيع|يوم|اسبوع)', lambda m: int(m.group(1))),
+    (r'(\d+)\s+(شهر|شهور|سنة|سنين|ايام|اسابيع|يوم|اسبوع)\s+(\w+)', lambda m: int(m.group(1))),
+    (r'every\s+(\d+)\s+(month|year|week|day)', lambda m: int(m.group(1))),
+    (r'(\d+)\s+(months|years|weeks|days)\s+(per|every|each)', lambda m: int(m.group(1))),
+    (r'per\s+(month|year|week|day|hour)', lambda m: 1),
+    (r'each\s+(month|year|week|day)', lambda m: 1),
+]
 
-A "NER financial entities detected" section may be appended below. These are automated hints from spaCy — use them to guide classification but always verify against the segment text. MONEY = currency amount, CARDINAL = plain number, DATE = time/period reference, PERCENT = percentage."""
+# Regex patterns for time unit extraction (longer/more specific first)
+_TIME_PATTERNS = sorted(TIME_UNITS.keys(), key=len, reverse=True)
+
+
+def _canonical_unit(pattern: str) -> str:
+    m = TIME_UNITS[pattern]
+    if m == 1/12: return "yearly"
+    if m == 1/24: return "biennially"
+    if m == 1/3: return "quarterly"
+    if m == 1/6: return "semiannually"
+    if m == 2: return "semimonthly"
+    if m == 2.1429: return "biweekly"
+    if m == 3: return "tendays"
+    if m == 30: return "daily"
+    if m == 171.43: return "hourly"
+    if m == 4.2857: return "weekly"
+    if m == 1: return "monthly"
+    return pattern
+
+
+def extract_time_unit(text: str, raw_value: float | None = None) -> str:
+    """Find time unit directly adjacent to the specific number (same phrase, no other numbers between)."""
+    text_lower = text.lower()
+    val_str = f"{raw_value:.0f}" if raw_value is not None and raw_value == int(raw_value) else str(raw_value) if raw_value is not None else None
+    if not val_str:
+        return ""
+    # Use word boundaries to avoid matching part of a larger number (e.g. "4000" in "14000")
+    val_pattern = r'(?<!\d)' + re.escape(val_str) + r'(?!\d)'
+    if not re.search(val_pattern, text_lower):
+        return ""
+    # 1) Dictionary patterns: match NUMBER directly followed by time unit, or time unit directly followed by NUMBER
+    for pattern in _TIME_PATTERNS:
+        # Check: NUMBER + optional space + TIME UNIT
+        m = re.search(val_pattern + r'\s*' + re.escape(pattern) + r'(?:\s|$)', text_lower)
+        if m:
+            return _canonical_unit(pattern)
+        # Check: TIME UNIT + optional space + NUMBER
+        m = re.search(re.escape(pattern) + r'\s*' + val_pattern + r'(?:\s|$)', text_lower)
+        if m:
+            return _canonical_unit(pattern)
+    # 2) General patterns like "كل 3 شهور", "every 2 months"
+    for pat_re, multiplier_fn in _TIME_GENERAL_PATTERNS:
+        m = re.search(pat_re, text_lower)
+        if m:
+            span = m.span()
+            base = m.group(0)
+            before = text_lower[:span[0]]
+            after = text_lower[span[1]:]
+            if re.search(val_pattern, before[-len(val_str)-15:]) or re.search(val_pattern, after[:len(val_str)+15]):
+                count = multiplier_fn(m)
+                if 'شهر' in base or 'شهور' in base or 'month' in base:
+                    return f"__MULT_{1/count}__"
+                if 'سن' in base or 'year' in base:
+                    return f"__MULT_{1/(12*count)}__"
+                if 'اسبوع' in base or 'week' in base:
+                    weekly_mult = TIME_UNITS.get('weekly', 4.2857)
+                    return f"__MULT_{weekly_mult/count}__"
+                if 'يوم' in base or 'day' in base:
+                    daily_mult = TIME_UNITS.get('daily', 30)
+                    return f"__MULT_{daily_mult/count}__"
+                return f"__MULT_{1/count}__"
+    return ""
+
+
+def normalize_value(raw_value: float, time_unit: str) -> float:
+    unit = (time_unit or "").strip().lower()
+    if not unit:
+        return raw_value
+    # Handle computed multipliers from general patterns (e.g. "__MULT_0.5__")
+    if unit.startswith("__mult_"):
+        try:
+            multiplier = float(unit.split("__mult_")[1].rstrip("_"))
+            return round(raw_value * multiplier, 2)
+        except (ValueError, IndexError):
+            return raw_value
+    multiplier = TIME_UNITS.get(unit)
+    if multiplier is not None:
+        return round(raw_value * multiplier, 2)
+    return raw_value
+
+
+EXTRACTION_PROMPT = """You are a financial data extraction engine. You understand accounting, finance, and how people talk about money in Arabic and English. Analyze each text segment.
+
+CRITICAL — Do NOT convert values or time units. Only report the EXACT number and time unit as written. Example: if the text says "4000 per week", output raw_value=4000, time_unit="weekly" — NOT 16000/month. The backend handles all normalization.
+
+For each number in a segment, decide:
+1. Which field? (use your understanding of finance, not memorized patterns)
+2. raw_value: the exact number, strip commas (4,000 = 4000), support k/m (5k = 5000, 2m = 2000000)
+3. time_unit: if a time period is attached (hourly, daily, weekly, biweekly, tendays, monthly, semimonthly, quarterly, semiannually, yearly, biennially), otherwise ""
+
+Fields:
+- goal_price: one-time purchase target (a car, a house, something you buy once)
+- monthly_income: primary recurring income (salary, wages, pension, regular allowance)
+- monthly_expenses: recurring spending (bills, rent, transportation, food, utilities)
+- current_savings: what the user already owns or is owed — assets, one-time receipts, notes receivable
+- extra_income: secondary recurring income (bonuses, commissions, freelance, side income, dividends, regular checks/notes with time units)
+- current_debts: what the user owes — one-time liabilities, loans, notes payable (OUTFLOW, reduces savings once)
+
+Think about the nature of each amount:
+- Is it recurring or one-time? (recurring → monthly_income/expenses/extra_income; one-time → savings/debts/goal)
+- Does it come IN or go OUT? (IN → income/savings/extra; OUT → expenses/debts/goal)
+- Is it primary or secondary income? (main job → monthly_income; side/irregular → extra_income)
+- Assets and receivables → current_savings. Liabilities and payables → current_debts.
+- A check/note with a time period (weekly, monthly) → recurring income; with no time period → one-time receipt → current_savings.
+
+Return ONLY valid JSON:
+{"extractions": [{"segment_index": 0, "field": "monthly_income", "raw_value": 5000.0, "time_unit": ""}]}
+
+A "NER financial entities detected" section may be appended below as hints."""
 
 
 class OpenAIExtractionService:
@@ -181,7 +201,7 @@ class OpenAIExtractionService:
         self, message: str, token_numbers: list[float], segments: list[str] | None = None
     ) -> FinancialData:
         if segments is None:
-            segments = segment_text(message)
+            segments = await self.segment_with_llm(message)
         fallback = heuristic_extract(message, token_numbers)
 
         if self.client is None:
@@ -234,7 +254,7 @@ def _aggregate_segment_extractions(
 ) -> FinancialData:
     enriched = list(all_numbers)
     for ext in extractions:
-        v = ext.get("value")
+        v = ext.get("raw_value") or ext.get("value")
         if v is not None:
             try:
                 enriched.append(float(v))
@@ -246,25 +266,30 @@ def _aggregate_segment_extractions(
 
     for ext in extractions:
         field = ext.get("field")
-        value = ext.get("value")
+        raw_value = ext.get("raw_value") or ext.get("value")
         seg_idx = ext.get("segment_index")
-        if field is None or value is None or seg_idx is None:
+        if field is None or raw_value is None or seg_idx is None:
             continue
 
         try:
-            value = float(value)
+            raw_value = float(raw_value)
         except (ValueError, TypeError):
             continue
 
+        # Determine time unit: prefer LLM's, fall back to regex from segment text
+        seg_text = segments[seg_idx] if seg_idx < len(segments) else ""
+        time_unit = ext.get("time_unit", "") or extract_time_unit(seg_text, raw_value)
+        value = normalize_value(raw_value, time_unit)
+
         if seg_idx not in seg_map:
             seg_map[seg_idx] = []
-        seg_map[seg_idx].append({"field": field, "value": value})
+        seg_map[seg_idx].append({"field": field, "raw_value": raw_value, "time_unit": time_unit, "value": value})
 
         if field == "goal_price":
             goals.append({"name": "primary goal", "goal_price": value})
             if data.goal_price is None or value > data.goal_price:
                 data.goal_price = value
-        elif field in ("monthly_income", "monthly_expenses", "current_savings", "extra_income"):
+        elif field in ("monthly_income", "monthly_expenses", "current_savings", "extra_income", "current_debts"):
             current = getattr(data, field) or 0
             setattr(data, field, current + value)
 

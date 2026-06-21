@@ -1,15 +1,18 @@
 # Fine-tuning Guide
 
 ## Why
-بدل ما نكتب 57 مثال في الـ prompt كل مرة و نضرب كف مع الـ LLM عشان يفهم — ندرّب مودل مخصص يفهم العربي والإنجليزي فوراً من غير prompt ولا examples.
+
+Instead of writing 57 examples in the prompt every time and wrestling with the LLM to understand — we train a dedicated model that understands Arabic and English immediately without prompts or examples.
 
 ## Steps
 
 ### 1. Generate training data
-تم: `scripts/finetune_data.jsonl` — 57 مثال (عربي + إنجليزي، كل fields × time units)
+
+Done: `scripts/finetune_data.jsonl` — 57 examples (Arabic + English, all fields x time units)
 
 ### 2. Upload to OpenAI and fine-tune
-تحتاج **OpenAI API key** (مش OpenRouter) عشان الـ fine-tuning. نفذ:
+
+You need an **OpenAI API key** (not OpenRouter) for fine-tuning. Run:
 
 ```bash
 cd backend
@@ -17,14 +20,14 @@ set OPENAI_API_KEY=sk-...
 .venv\Scripts\python scripts\generate_training_data.py --upload
 ```
 
-الـ script هيعمل automatically:
-- Upload الـ JSONL file
-- Create fine-tuning job (gpt-4o-mini, 3 epochs)
-- رجعلك model ID زي: `ft:gpt-4o-mini-2024-07-18:...:...`
+The script automatically:
+- Uploads the JSONL file
+- Creates a fine-tuning job (gpt-4o-mini, 3 epochs)
+- Returns model ID like: `ft:gpt-4o-mini-2024-07-18:...:...`
 
 ### 3. Monitor job status
+
 ```bash
-# شوف الـ status
 .venv\Scripts\python -c "
 from openai import OpenAI
 import os
@@ -34,23 +37,28 @@ print(client.fine_tuning.jobs.list(limit=5))
 ```
 
 ### 4. Update config
-لما الـ job يخلص، حط الـ model ID في `.env`:
+
+Once the job finishes, set the model ID in `.env`:
 
 ```
 openai_model=ft:gpt-4o-mini-2024-07-18:your-org-name:model-id
 ```
 
 ### 5. Verify
-ابدأ الـ backend و جرب:
+
+Start the backend and test:
+
 ```
 POST /chat
 {"message": "اريد شراء عربة 800000ولدي ادخار20000 مرتب 50000 اسبوعي مصاريف 10000 حوافز 4000"}
 ```
 
 ## Expected results
-- **قبل fine-tuning**: محتاج 57 example + instruction في الـ prompt (وزن تقيل)
-- **بعد fine-tuning**: نفس الدقة من غير examples — بس system message خفيف
+
+- **Before fine-tuning**: Needs 57 examples + instruction in the prompt (heavy weight)
+- **After fine-tuning**: Same accuracy without examples — just a light system message
 
 ## Cost estimate
-- gpt-4o-mini fine-tuning: ~$3-5 لكل 57 مثال
-- الاستخدام بعد كده: نفس سعر gpt-4o-mini العادي
+
+- gpt-4o-mini fine-tuning: ~$3-5 per 57 examples
+- Usage after: same price as regular gpt-4o-mini

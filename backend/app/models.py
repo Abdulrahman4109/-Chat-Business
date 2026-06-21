@@ -18,14 +18,15 @@ class FinancialData(BaseModel):
     goal_price: float | None = None
     monthly_income: float | None = None
     monthly_expenses: float | None = None
-    current_savings: float | None = 0
-    extra_income: float | None = 0
+    current_savings: float | None = None
+    extra_income: float | None = None
+    current_debts: float | None = None
     goals: list[dict[str, Any]] = Field(default_factory=list)
     all_numbers: list[float] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
     segments: list[dict[str, Any]] = Field(default_factory=list)
 
-    @field_validator("goal_price", "monthly_income", "monthly_expenses", "current_savings", "extra_income")
+    @field_validator("goal_price", "monthly_income", "monthly_expenses", "current_savings", "extra_income", "current_debts")
     @classmethod
     def non_negative(cls, value: float | None) -> float | None:
         if value is not None and value < 0:

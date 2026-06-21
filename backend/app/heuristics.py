@@ -59,6 +59,8 @@ def apply_intelligent_defaults(data: FinancialData) -> FinancialData:
         normalized.current_savings = 0
     if normalized.extra_income is None:
         normalized.extra_income = 0
+    if normalized.current_debts is None:
+        normalized.current_debts = 0
     if normalized.monthly_expenses is None:
         normalized.monthly_expenses = 0
     if normalized.goal_price is not None and not normalized.goals:

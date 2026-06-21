@@ -5,30 +5,29 @@
 ```
 chat/
 ├── CLAUDE.md                  ← Project memory (auto-updated)
+├── ARCHITECTURE.md
 ├── README.md
 ├── .gitignore
 │
 ├── backend/                   ← Python FastAPI
 │   ├── .env                   ← API keys (gitignored)
 │   ├── requirements.txt       ← fastapi, openai, pydantic, httpx, mangum
-│   ├── vercel.json            ← Vercel deployment config
 │   ├── app/
 │   │   ├── main.py            ← FastAPI app: all HTTP routes
-│   │   ├── models.py          ← Pydantic models (ChatRequest, FinancialData, …)
+│   │   ├── models.py          ← Pydantic models (ChatRequest, FinancialData with None defaults, current_debts)
 │   │   ├── config.py          ← Settings from .env (pydantic-settings)
-│   │   ├── openai_service.py  ← LLM extraction service (prompts + API calls)
+│   │   ├── openai_service.py  ← LLM extraction service + time unit normalization pipeline
 │   │   ├── heuristics.py      ← Fallback: number extraction (no classification)
-│   │   ├── calculator.py      ← Goal timeline math (net savings → months)
+│   │   ├── calculator.py      ← Goal timeline math (debts reduce effective savings)
 │   │   ├── nlp.py             ← Number extraction (regex + spaCy like_num)
 │   │   ├── segmenter.py       ← Arabic-aware text segmenter (regex)
 │   │   ├── storage.py         ← Local JSON + Mujarrad API client
 │   │   └── schema.json        ← Mujarrad node schema
-│   ├── api/index.py           ← Vercel Mangum handler
 │   ├── scripts/
 │   │   ├── generate_training_data.py  ← Fine-tuning dataset generator
 │   │   ├── finetune_data.jsonl         ← Generated training examples
 │   │   └── HOW_TO_FINETUNE.md
-│   └── tests/                 ← 76 pytest tests
+│   └── tests/                 ← 85 pytest tests
 │       ├── test_calculator.py
 │       ├── test_heuristics.py
 │       ├── test_models.py
@@ -43,9 +42,8 @@ chat/
 │   ├── src/
 │   │   ├── main.jsx           ← React app (App, Message, Metric)
 │   │   └── styles.css         ← Dark theme CSS
-│   └── api/                   ← Duplicate backend for Vercel serverless
 │
-└── documents/                 ← ← You are here
+└── documents/                 ← Detailed docs
     ├── 00-overview.md
     ├── 01-architecture.md
     ├── 02-backend-api.md
@@ -67,15 +65,16 @@ Frontend POST /chat
        ↓
 Backend main.py::chat()
   1. extract_numbers(message)        ← regex + spaCy → raw numbers
-  2. segment_text(message)           ← regex splitter → list[str]
-  3. save segment nodes (RAW)        ← Mujarrad "example" space
-  4. OpenAIExtractionService.extract() ← LLM → FinancialData
-     a. extract_entities()           ← spaCy NER (MONEY, DATE, …)
-     b. LLM call with segments       ← EXTRACTION_PROMPT
+  2. LLM #1: segment_with_llm()     ← GPT → segments[]
+     ↳ Fallback: segmenter.segment_text() (regex)
+  3. save segment nodes (RAW)        ← Mujarrad "example" (async, parallel)
+  4. LLM #2: extract()              ← GPT → FinancialData
+     a. extract_time_unit()         ← parse time phrases
+     b. normalize_value()           ← compute monthly equivalent
      c. _aggregate_segment_extractions() ← merge into FinancialData
-  5. calculate_goal(data)            ← calculator → CalculationResult
-  6. update segment nodes (classified) ← Mujarrad "example" space
-  7. save_chat_record(record)        ← Local JSON + Mujarrad "chat" space
+  5. calculate_goal(data)           ← calculator → CalculationResult
+  6. update segment nodes (classified) ← Mujarrad "example" (async, parallel)
+  7. _store_async()                 ← Local JSON + Mujarrad (background task)
        ↓
 Response → Frontend
   { conversation_id, assistant_message, extracted_data, calculation }
@@ -92,15 +91,15 @@ Response → Frontend
                          ┌───────────────┼───────────────┐
                          ▼               ▼               ▼
                   ┌────────────┐  ┌─────────────┐  ┌──────────┐
-                  │ Segmenter  │  │ LLM Service │  │ Calculator│
-                  │ (regex)    │  │ (openai)    │  │ (math)   │
+                  │ LLM #1     │  │ LLM #2     │  │Calculator│
+                  │ Segmenter  │  │ Extractor  │  │ (math)  │
                   └─────┬──────┘  └──────┬──────┘  └────┬─────┘
                         │                │              │
                         ▼                ▼              ▼
                   ┌────────────────────────────────────────┐
                   │         MujarradStorage                │
                   │  (local .mujarrad-chat/history.json    │
-                  │   + async POST to Mujarrad API)        │
+                  │   + background async POST to Mujarrad) │
                   └────────────────────────────────────────┘
 ```
 

@@ -1,3 +1,4 @@
+import asyncio
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,32 +66,14 @@ async def chat(request: ChatRequest) -> ChatResponse:
     service = OpenAIExtractionService()
 
     try:
-        # 1️⃣ تقسيم النص لقطع (segments) باستخدام regex — دقيق مع العربي
-        segments = segment_text(request.message)
-
-        # 2️⃣ حفظ RAW segments كـ nodes في Mujarrad
-        storage = MujarradStorage()
-        raw_segments = [{"text": s, "classifications": []} for s in segments]
-        for idx, raw in enumerate(raw_segments):
-            await storage.save_segment_node(raw, conversation_id, request.user_id, idx)
-
-        # 3️⃣ LLM #2 يستخرج المعلومات المالية من الـ segments
-        extracted = await service.extract(
-            request.message, token_numbers, segments
-        )
+        # 1) LLM segmentation + extraction
+        segments = await service.segment_with_llm(request.message)
+        extracted = await service.extract(request.message, token_numbers, segments)
         calculation = calculate_goal(extracted)
 
-        # 4️⃣ تحديث segment nodes بالتصنيفات
-        for idx, seg in enumerate(extracted.segments):
-            if seg.get("classifications"):
-                await storage.update_segment_node(
-                    seg, conversation_id, request.user_id, idx
-                )
-
-        assistant_text = build_assistant_response(calculation)
+        assistant_text = build_assistant_response(calculation, extracted)
 
         user_message = ChatMessage(role="user", content=request.message)
-
         assistant_message = ChatMessage(
             role="assistant",
             content=assistant_text,
@@ -107,12 +90,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
             calculation=calculation,
         )
 
-        # 5️⃣ حفظ سجل المحادثة كامل
-        try:
-            await storage.save_chat_record(record)
-        except Exception as e:
-            print("Storage error:", e)
-            assistant_message.content += " (history not saved)"
+        # 2) Background storage — does not slow response
+        asyncio.create_task(_store_async(record, segments, extracted, conversation_id))
 
         return ChatResponse(
             conversation_id=conversation_id,
@@ -125,6 +104,28 @@ async def chat(request: ChatRequest) -> ChatResponse:
         raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Chat processing failed: {exc}") from exc
+
+
+async def _store_async(record: ChatRecord, segments: list[str], extracted, conversation_id: str) -> None:
+    try:
+        storage = MujarradStorage()
+        raw_segments = [{"text": s, "classifications": []} for s in segments]
+        await asyncio.gather(*[
+            storage.save_segment_node(raw, conversation_id, record.user_id, idx)
+            for idx, raw in enumerate(raw_segments)
+        ])
+
+        update_tasks = [
+            storage.update_segment_node(seg, conversation_id, record.user_id, idx)
+            for idx, seg in enumerate(extracted.segments)
+            if seg.get("classifications")
+        ]
+        if update_tasks:
+            await asyncio.gather(*update_tasks)
+
+        await storage.save_chat_record(record)
+    except Exception as e:
+        print("Background storage error:", e)
 
 
 
@@ -154,7 +155,7 @@ async def mujarrad_status():
         return {"connected": False, "error": str(e)}
 
 
-def build_assistant_response(calculation: CalculationResult) -> str:
+def build_assistant_response(calculation: CalculationResult, data=None) -> str:
     if not calculation.is_achievable:
         return (
             f"I could not produce a reliable timeline yet: {calculation.duration_display}. "
@@ -164,9 +165,13 @@ def build_assistant_response(calculation: CalculationResult) -> str:
     if calculation.months == 0:
         return "Your goal is already funded with your current savings."
 
-    return (
-        f"At your current pace, it will take {calculation.duration_display}. "
-        f"Net monthly savings: {calculation.net_monthly_savings:,.0f}. "
-        f"Remaining amount: {calculation.remaining:,.0f}. "
-        f"{' '.join(calculation.suggestions)}"
-    )
+    parts = [
+        f"At your current pace, it will take {calculation.duration_display}.",
+        f"Net monthly savings: {calculation.net_monthly_savings:,.0f}.",
+    ]
+    if data and data.current_debts:
+        net_savings = (data.current_savings or 0) - data.current_debts
+        parts.append(f"Net savings: {net_savings:,.0f} (savings {data.current_savings:,.0f} - debts {data.current_debts:,.0f}).")
+    parts.append(f"Remaining amount: {calculation.remaining:,.0f}.")
+    parts.extend(calculation.suggestions)
+    return " ".join(parts)

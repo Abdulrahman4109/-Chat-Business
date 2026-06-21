@@ -1,6 +1,6 @@
 # Storage System
 
-The system uses two storage layers: local JSON (always) and remote Mujarrad API (best-effort).
+The system uses two storage layers: local JSON (always) and remote Mujarrad API (background, best-effort).
 
 ---
 
@@ -19,7 +19,9 @@ Created automatically on first `save_chat_record()`. Falls back to system temp d
 
 ---
 
-## Mujarrad Remote Storage
+## Mujarrad Remote Storage (Background)
+
+Storage operations run as an `asyncio.create_task` fired after the response is constructed. The response returns immediately without waiting for storage.
 
 Two separate "spaces" (equivalent to collections/tables):
 
@@ -61,10 +63,15 @@ Two separate "spaces" (equivalent to collections/tables):
 ## Storage Flow
 
 ```
-save_chat_record(record)
+save_chat_record(record)  [called from _store_async background task]
   ├── 1. Local: append to history.json (ALWAYS works)
   └── 2. Remote: async POST to Mujarrad /spaces/chat/nodes (best-effort)
        └── On failure: log "skipped", no retry
+
+_store_async(record, segments, extracted, conversation_id)
+  ├── 1. Save all raw segments → asyncio.gather (parallel)
+  ├── 2. Update classified segments → asyncio.gather (parallel)
+  └── 3. save_chat_record() → local + remote
 
 get_history(user_id)
   ├── 1. Local: read & filter history.json
@@ -73,6 +80,10 @@ get_history(user_id)
   │    └── On failure: return local data
   └── 3. Return
 ```
+
+## Why Background Storage?
+
+The `/chat` endpoint response is constructed FROM the LLM + calculator output, not from storage. Firing storage as `asyncio.create_task` cuts ~2–6 POSTs out of the critical path, returning the response to the user instantly. Failures in background storage are logged and never surfaced.
 
 ## Why Two Spaces?
 

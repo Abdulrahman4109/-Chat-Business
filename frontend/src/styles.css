@@ -225,6 +225,24 @@ textarea {
 .typing {
   color: var(--accent);
   margin: 10px 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cancelBtn {
+  background: rgba(165, 130, 177, 0.15);
+  border: 1px solid rgba(165, 130, 177, 0.3);
+  color: var(--accent);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: background 0.2s;
+}
+
+.cancelBtn:hover {
+  background: rgba(165, 130, 177, 0.3);
 }
 
 .composer {

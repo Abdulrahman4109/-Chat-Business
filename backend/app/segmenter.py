@@ -18,8 +18,10 @@ def segment_text(text: str) -> list[str]:
 
 
 def _insert_breaks_for_arabic(text: str) -> str:
-    text = re.sub(r'(\d)(و[\u0621-\u064A\u0660-\u0669])', r'\1. \2', text)
-    text = re.sub(r'(\d)(ف[\u0621-\u064A\u0660-\u0669])', r'\1. \2', text)
-    text = re.sub(r'(\d)(ب[\u0621-\u064A\u0660-\u0669])', r'\1. \2', text)
-    text = re.sub(r'(\d)(ل[\u0621-\u064A\u0660-\u0669])', r'\1. \2', text)
+    text = re.sub(r'(\d+)(و[\u0621-\u064A\u0660-\u0669])', r'\1. \2', text)
+    text = re.sub(r'(\d+)(ف[\u0621-\u064A\u0660-\u0669])', r'\1. \2', text)
+    text = re.sub(r'(\d+)(ب[\u0621-\u064A\u0660-\u0669])', r'\1. \2', text)
+    text = re.sub(r'(\d+)(ل[\u0621-\u064A\u0660-\u0669])', r'\1. \2', text)
+    text = re.sub(r'(\d+)(?:\s*)(و)\s*', r'\1. \2 ', text)
+    text = re.sub(r'(\d+)(?:\s*)(ف)(?!ي\s+الاسبوع|ي\s+الشهر|ي\s+السنة|ي\s+اليوم)', r'\1. \2 ', text)
     return text

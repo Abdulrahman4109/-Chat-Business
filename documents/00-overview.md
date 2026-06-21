@@ -29,6 +29,8 @@ A bilingual (Arabic/English) conversational AI that extracts financial informati
 - **No-goal fallback**: Answers basic "what are my finances" without a target
 - **Conversation history**: Persistent per-user, restored from sidebar
 - **Mujarrad sync**: Remote storage via Mujarrad API (nodes)
+- **Cancel button**: Abort in-flight request if sent by mistake
+- **None defaults**: Unmentioned fields skip display entirely (no "0" placeholders)
 
 ## System Architecture (High-Level)
 
@@ -37,11 +39,14 @@ User → React Frontend (Vite:5173)
          ↓ POST /chat
       FastAPI Backend (uvicorn:8000)
          ↓
-      1. segment_text()          — Regex Arabic-aware splitter
-      2. save RAW segments        — to Mujarrad (example space)
-      3. LLM extract()            — OpenAI gpt-4o-mini → FinancialData
-      4. calculate_goal()         — Timeline math
-      5. save chat record         — Local JSON + Mujarrad (chat space)
+      1. extract_numbers()         — Regex + spaCy
+      2. LLM #1: segment_with_llm() — GPT splits into segments
+         ↳ Fallback: segmenter.segment_text() (regex)
+      3. save RAW segments          — to Mujarrad (background, parallel)
+      4. LLM #2: extract()          — GPT classifies + normalizes time units
+         ↳ Fallback: heuristic_extract() (numbers only)
+      5. calculate_goal()           — Timeline math (with debts support)
+      6. save chat record           — Local JSON + Mujarrad (background)
          ↓
       Response → Frontend → Bubble (text + metric grid + result panel)
 ```
@@ -54,4 +59,4 @@ User → React Frontend (Vite:5173)
 | AI | OpenAI gpt-4o-mini (via OpenRouter) |
 | Frontend | React 19, Vite, Lucide icons |
 | Storage | Local JSON (~/.mujarrad-chat/) + Mujarrad REST API |
-| Deployment | Vercel (Mangum handler) |
+| Deployment | Local uvicorn + static hosting |

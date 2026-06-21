@@ -7,8 +7,9 @@ class TestFinancialData:
         data = FinancialData()
         assert data.goal_price is None
         assert data.monthly_income is None
-        assert data.current_savings == 0
-        assert data.extra_income == 0
+        assert data.current_savings is None
+        assert data.extra_income is None
+        assert data.current_debts is None
         assert data.goals == []
 
     def test_non_negative_validation(self):

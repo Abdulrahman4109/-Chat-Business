@@ -38,12 +38,14 @@
       "fields": {
         "goal_price": { "type": "number", "nullable": true },
         "monthly_income": { "type": "number", "nullable": true },
-        "monthly_expenses": { "type": "number" },
-        "current_savings": { "type": "number" },
-        "extra_income": { "type": "number" },
+        "monthly_expenses": { "type": "number", "nullable": true },
+        "current_savings": { "type": "number", "nullable": true },
+        "extra_income": { "type": "number", "nullable": true },
+        "current_debts": { "type": "number", "nullable": true },
         "goals": { "type": "array", "items": { "type": "object" } },
         "all_numbers": { "type": "array", "items": { "type": "number" } },
-        "assumptions": { "type": "array", "items": { "type": "string" } }
+        "assumptions": { "type": "array", "items": { "type": "string" } },
+        "segments": { "type": "array", "items": { "type": "object" } }
       }
     },
     "CalculationResult": {

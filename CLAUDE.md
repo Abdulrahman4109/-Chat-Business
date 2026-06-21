@@ -3,9 +3,8 @@
 ## Stack
 - **Backend**: Python FastAPI (port 8000, uvicorn)
 - **Frontend**: React 19 + Vite (port 5173, proxy → 8001)
-- **AI**: gpt-4o-mini via OpenAI API
+- **AI**: gpt-4o-mini via OpenRouter (OpenAI-compatible API)
 - **Storage**: Local JSON (`~/.mujarrad-chat/history.json`) + Mujarrad API sync
-- **Deploy**: Vercel (Mangum handler in `backend/api/index.py`)
 
 ## Key API Endpoints (`backend/app/main.py`)
 
@@ -23,7 +22,7 @@
 | Model | Key Fields |
 |-------|-----------|
 | `ChatRequest` | `message: str` (1-8000), `user_id: str` (default="default-user"), `conversation_id: str\|None` |
-| `FinancialData` | `goal_price, monthly_income, monthly_expenses, current_savings=0, extra_income=0, goals: list[dict]=[], all_numbers: list[float]=[], assumptions: list[str]=[]` — all floats validated non-negative |
+| `FinancialData` | `goal_price, monthly_income, monthly_expenses, current_savings=None, extra_income=None, current_debts=None, goals: list[dict]=[], all_numbers: list[float]=[], assumptions: list[str]=[]` — all floats validated non-negative; None means unmentioned and hidden from UI |
 | `CalculationResult` | `net_monthly_savings, remaining, months, duration_display, is_achievable, suggestions: list[str]` |
 | `ChatMessage` | `id, role, content, created_at, extracted_data?, calculation?` |
 | `ChatRecord` | `id, user_id, conversation_id, user_message, assistant_message, extracted_data, calculation, created_at` |
@@ -32,21 +31,25 @@
 ## Extraction Pipeline (`/chat` flow)
 
 1. **`nlp.extract_numbers(message)`** — regex + spaCy tokenizer → `list[float]`
-2. **LLM #1 — `OpenAIExtractionService.segment_with_llm(message)`**:
+2. **`segmenter.segment_text(message)`** — regex splitter → `list[str]`
+3. **LLM #1 — `OpenAIExtractionService.segment_with_llm(message)`**:
    - Calls GPT with `SEGMENTER_PROMPT` → `{"segments": [...]}`
-   - Falls back to `segmenter.segment_text()` (regex) if LLM unavailable/fails
-3. RAW segment nodes saved to Mujarrad `example` space (best-effort)
-4. **LLM #2 — `OpenAIExtractionService.extract(message, token_numbers, segments)`**:
+   - Falls back to regex segmenter if LLM unavailable/fails
+4. RAW segment nodes saved to Mujarrad `example` space (background, parallel with asyncio.gather)
+5. **LLM #2 — `OpenAIExtractionService.extract(message, token_numbers, segments)`**:
+   - Time unit normalization: `extract_time_unit()` parses time phrases, `normalize_value()` computes monthly equivalent
+   - Supports hourly, daily, weekly, biweekly, every-10-days, semimonthly, monthly, quarterly, semiannually, yearly, biennially
+   - Arabic variants: كل شهر, كل أسبوع, أسبوعي, يومي, سنويا, every hamza variant
+   - General patterns: `كل 2 شهر` → computed multiplier `__MULT_0.5__`
    - If no API key → `heuristic_extract()` fallback (numbers only, no field classification)
-   - If API key set: calls GPT with `EXTRACTION_PROMPT`, temperature=0
-   - Returns LLM extraction directly (no merge)
-5. **`_aggregate_segment_extractions()`** — sums same fields across segments, builds `segments[]` list with classifications
-6. Updates segment nodes in Mujarrad with classifications
-7. **`calculator.calculate_goal(data)`**:
+6. **`_aggregate_segment_extractions()`** — sums same fields across segments, builds `segments[]` list with classifications
+7. Updates segment nodes in Mujarrad with classifications (background, parallel)
+8. **`calculator.calculate_goal(data)`**:
    - `net_monthly_savings = income + extra - expenses`
    - `remaining = max(goal - savings, 0)`
+   - `effective_savings = max(savings - debts, 0)` when debts present
    - `raw_months = remaining / net_savings` → `ceil()`
-8. **`storage.MujarradStorage.save_chat_record(record)`** — saves locally then async POSTs to Mujarrad
+9. **Background storage**: `asyncio.create_task(_store_async(...))` — saves locally then async POSTs to Mujarrad, parallel segment saves with `asyncio.gather`
 
 ## Heuristics (`backend/app/heuristics.py`)
 
@@ -57,7 +60,7 @@
 - `merge_extractions()` — **REMOVED** (LLM is sole classifier)
 - `_classify_mention()` / `_score_context()` / `_has_goal_language()` / `FIELD_PRIORITY` — **REMOVED** (no keywords)
 - `FIELD_KEYWORDS` — **REMOVED** (LLM understands fields without keywords)
-- `apply_intelligent_defaults()` — fills None→0, creates `goals` list from `goal_price`
+- `apply_intelligent_defaults()` — fills None→0 for calculator, creates `goals` list from `goal_price`
 
 ## Calculator (`backend/app/calculator.py`)
 
@@ -65,6 +68,7 @@
 - If no goal_price → unachievable
 - If remaining==0 → months=0, "already funded"
 - If net_savings≤0 → unachievable
+- `effective_savings = max((current_savings or 0) - (current_debts or 0), 0)` — debts reduce available savings
 - `format_duration(months)` → "5 months", "1 year", "2 years and 3 months"
 - `build_suggestions()` → max 3: keep reserves, if >12mo suggest income/expense fix, if expenses>60% review costs, if multiple goals prioritize
 
@@ -78,14 +82,14 @@
 | Field | Default |
 |-------|---------|
 | `openai_api_key` | `""` |
-| `openai_base_url` | `""` (defaults to `https://api.openai.com/v1`) |
+| `openai_base_url` | `https://openrouter.ai/api/v1` | Override with `""` for direct OpenAI API |
 | `openai_model` | `gpt-4o-mini` |
 | `mujarrad_public_key` | `""` |
 | `mujarrad_secret_key` | `""` |
 | `mujarrad_api_base` | `https://www.mujarrad.com/api` |
 | `mujarrad_space_url` | `https://www.mujarrad.com/spaces/chat` |
 | `mujarrad_segments_space_url` | `https://www.mujarrad.com/spaces/example` |
-| `cors_origins` | `"http://localhost:5173,http://127.0.0.1:5173,https://chat-business.vercel.app"` |
+| `cors_origins` | `"http://localhost:5173,http://127.0.0.1:5173"` |
 
 Properties: `cors_origin_list` (splits by comma), `mujarrad_space_slug` (last URL segment → "chat"), `mujarrad_segments_space_slug` (last URL segment → "example")
 
@@ -102,7 +106,10 @@ Properties: `cors_origin_list` (splits by comma), `mujarrad_space_slug` (last UR
 ## Frontend (`frontend/src/main.jsx`)
 
 - **Components**: `App` (root), `Message` (bubble + analysis grid + result panel), `Metric` (label+value)
-- **State**: `userId` (localStorage `financial-chat-user-id`), `conversationId`, `messages[]`, `input`, `history[]`, `loading`, `sidebarOpen`
+- **State**: `userId` (localStorage `financial-chat-user-id`), `conversationId`, `messages[]`, `input`, `history[]`, `loading`, `sidebarOpen`, `abortRef`
+- **Cancel button**: `AbortController` in `sendMessage()`, `cancelRequest()` function, button appears in typing indicator during loading
+- **Metric component**: returns `null` when value is `null` or `undefined` — unmentioned fields do not display
+- **Analysis grid**: conditionally shows "Net Savings" row when `current_debts` exists
 - **History**: grouped by `conversation_id`, sorted most-recent-first, sidebar shows first user message
 - **Styling**: Dark theme CSS variables (`--bg: #02000F`, `--primary: #541288`, `--accent: #A582B1`), responsive at 860px
 - **API base**: `import.meta.env.VITE_API_BASE_URL || ''` (Vite proxy handles `/chat`, `/history`, etc. → `localhost:8001`)
@@ -117,7 +124,7 @@ Properties: `cors_origin_list` (splits by comma), `mujarrad_space_slug` (last UR
 
 ## Storage Flow
 1. Chat → save to `~/.mujarrad-chat/history.json` (always, synchronous)
-2. Backend → async POST chat record to `chat` space, segment nodes to `example` space (best-effort, logs errors)
+2. Backend → `asyncio.create_task(_store_async(...))` background task: POST chat record to `chat` space, segment nodes to `example` space (parallel with `asyncio.gather`), best-effort
 3. History load: local first, then Mujarrad API for fresher data, save if remote succeeds
 4. Sidebar sorted by most recent conversation
 
@@ -134,22 +141,19 @@ chat/
 │   │   ├── storage.py     ← MujarradStorage (local + cloud)
 │   │   ├── config.py      ← Settings (pydantic-settings)
 │   │   ├── models.py      ← Pydantic models
-│   │   ├── openai_service.py ← OpenAIExtractionService
-│   │   ├── heuristics.py  ← Rule-based extraction (Ar/En)
-│   │   ├── calculator.py  ← Goal timeline calculator
+│   │   ├── openai_service.py ← OpenAIExtractionService + time unit normalization
+│   │   ├── heuristics.py  ← Rule-based number extraction (Ar/En)
+│   │   ├── calculator.py  ← Goal timeline calculator (with debts support)
 │   │   ├── nlp.py         ← Number extraction (spaCy+regex)
 │   │   └── schema.json    ← Mujarrad node schema
-│   ├── api/index.py       ← Vercel Mangum handler
-│   ├── vercel.json
-│   └── tests/             ← 76 tests (calculator, heuristics, models, nlp, segmenter, openai_service)
+│   └── tests/             ← 85 tests (calculator, heuristics, models, nlp, segmenter, openai_service)
 ├── frontend/
 │   ├── package.json       ← react, lucide-react, vite
 │   ├── vite.config.js     ← proxy /chat, /history etc. → localhost:8001
 │   ├── index.html
 │   ├── src/
-│   │   ├── main.jsx       ← React app (App, Message, Metric)
-│   │   └── styles.css     ← Dark theme CSS
-│   └── api/               ← Duplicate backend for Vercel deployment
+│   │   ├── main.jsx       ← React app (App, Message, Metric) + cancel button
+│   │   └── styles.css     ← Dark theme CSS + cancel button styles
 └── .gitignore
 ```
 
@@ -170,22 +174,37 @@ npm run dev    # starts on localhost:5173, proxy → localhost:8001
 npm run build
 ```
 
-## Tests (76 total)
+## Tests (85 total)
 | File | Tests |
 |------|-------|
 | `tests/test_calculator.py` | 10: goal calc, formatting, suggestions |
-| `tests/test_heuristics.py` | 10: normalize, extract |
-| `tests/test_models.py` | 8: defaults, validation, serialization |
-| `tests/test_nlp.py` | 10: basic numbers, currency, Arabic digits, dedup, attached to Arabic text |
-| `tests/test_openai_service.py` | 15: heuristic fallback, aggregation, segments |
-| `tests/test_segmenter.py` | 9: empty, English/Arabic split, conjunctions, max segments |
+| `tests/test_heuristics.py` | 24: normalize, extract, defaults, Arabic |
+| `tests/test_models.py` | 10: defaults, validation, serialization |
+| `tests/test_nlp.py` | 9: basic numbers, currency, Arabic digits, dedup, attached to Arabic text |
+| `tests/test_openai_service.py` | 19: heuristic fallback, aggregation, segments, time normalization |
+| `tests/test_segmenter.py` | 13: empty, English/Arabic split, conjunctions, max segments |
 
 No tests for `storage.py` or `main.py` (async/API tests missing).
 
 ## Recent Changes
 
-### 10. OpenRouter removed, response_format removed, timeouts increased
-- `openai_base_url` default changed from `https://openrouter.ai/api/v1` → `""` (uses default OpenAI API)
+### 12. Cancel button + background storage parallelization
+- Added `AbortController` ref + `cancelRequest()` in `main.jsx` — cancel button appears in typing indicator during loading
+- Storage moved to `asyncio.create_task(_store_async(...))` so response returns immediately after LLM + calculation
+- Segment saves parallelized with `asyncio.gather` (all raw segments, then all classified segments, at once)
+- Chat record saved after segment operations complete
+
+### 11. None defaults, debts support, time unit normalization pipeline
+- `FinancialData.current_savings`, `extra_income`, `current_debts` default to `None` instead of `0` — unmentioned fields skip display entirely
+- `Metric` component returns `null` for `null`/`undefined` values
+- Analysis grid shows "Net Savings" row only when `current_debts` present
+- `build_assistant_response` accepts `data` param and mentions debts breakdown only when `current_debts` exists
+- **CRITICAL fix**: `segmenter.py` Arabic split patterns `(\d)` → `(\d+)`, was corrupting numbers by eating last digit (e.g. `30000 و شيك` → `3000. و شيك`)
+- `extract_time_unit` uses word-boundary matching `(?<!\d)...(?!\d)` to prevent false matches inside larger numbers
+- Added ~25 missing Arabic time-unit variants (hamza variants, يومي, كل يوم, كل شهر, كل عام, etc.)
+- `_TIME_GENERAL_PATTERNS` correctly computes multipliers for non-1 counts (e.g. `كل 2 شهر` → `__MULT_0.5__` instead of incorrectly returning `'monthly'`)
+
+### 10. response_format removed, timeouts increased
 - Removed `response_format={"type": "json_object"}` from both LLM calls (OpenRouter didn't support it reliably)
 - Added `_parse_json_from_text()` helper to extract JSON from any LLM response (handles markdown, extra text)
 - Increased timeouts: segmenter 5s→10s, extractor 8s→10s
@@ -200,7 +219,7 @@ No tests for `storage.py` or `main.py` (async/API tests missing).
 ### 8. FIELD_KEYWORDS and merge_extractions removed (`heuristics.py`)
 - **Removed** `FIELD_KEYWORDS` dict entirely, along with `_classify_mention`, `_score_context`, `_has_goal_language`, `FIELD_PRIORITY`
 - **Removed** `merge_extractions()` function — LLM is now the sole classifier
-- **Removed** 5 merge/extraction tests (76 total now)
+- **Removed** 5 merge/extraction tests (76 total then)
 - `heuristic_extract()` now only extracts numbers into `all_numbers` with no field classification
 - Pipeline: segmenter → LLM → calculator (no heuristic merge)
 
@@ -211,5 +230,3 @@ Chat history → `chat` space, financial segment nodes → `example` space (`muj
 - `spaCy` is NOT in requirements.txt (optional import in `nlp.py`)
 - Frontend deps all use `"latest"` in package.json
 - Backend runs on port **8000**, Vite proxied to **8001** (not 8000!) in vite.config.js
-- Deployed frontend at: `https://chat-business.vercel.app` (in CORS)
-- `frontend/api/` is a duplicate of `backend/app/` for Vercel serverless; keep in sync

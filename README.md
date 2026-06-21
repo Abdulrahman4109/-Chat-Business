@@ -16,8 +16,8 @@ A smart financial chat app that extracts numbers from natural language (Arabic/E
 |-------|-----------|
 | Backend | Python FastAPI (port 8000) |
 | Frontend | React + Vite (port 5173) |
-| AI | gpt-4o-mini (OpenAI-compatible) |
-| NLP | spaCy + Regex |
+| AI | gpt-4o-mini (OpenAI API) |
+| NLP | spaCy + Regex (spaCy optional) |
 | Storage | Local JSON + Mujarrad API |
 
 ## Setup
@@ -40,12 +40,12 @@ Create `backend/.env` with the following keys:
 | `MUJARRAD_PUBLIC_KEY` | Public key from Mujarrad CLI |
 | `MUJARRAD_SECRET_KEY` | Secret key from Mujarrad CLI |
 
-To generate these keys, first install the Mujarrad CLI:
+To generate these keys, first install the Mujarrad CLI and log in:
 
 ```bash
 npm install -g mujarrad-cli
-# or run directly without installing:
-npx mujarrad-cli sdk keygen
+mujarrad auth login    # Log in with your Mujarrad account
+mujarrad sdk keygen    # Generate a new API key pair
 ```
 
 This outputs a public key and secret key pair. Add them to `.env`.

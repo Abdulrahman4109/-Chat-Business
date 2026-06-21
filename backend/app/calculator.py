@@ -10,6 +10,7 @@ def calculate_goal(data: FinancialData) -> CalculationResult:
     monthly_expenses = data.monthly_expenses or 0
     current_savings = data.current_savings or 0
     extra_income = data.extra_income or 0
+    current_debts = data.current_debts or 0
 
     if goal_price is None:
         net_monthly_savings = monthly_income + extra_income - monthly_expenses
@@ -24,7 +25,8 @@ def calculate_goal(data: FinancialData) -> CalculationResult:
         )
 
     net_monthly_savings = monthly_income + extra_income - monthly_expenses
-    remaining = max(goal_price - current_savings, 0)
+    effective_savings = max(current_savings - current_debts, 0)
+    remaining = max(goal_price - effective_savings, 0)
 
     if remaining == 0:
         return CalculationResult(

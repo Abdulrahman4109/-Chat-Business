@@ -25,6 +25,7 @@ Extract financial data without saving.
     "monthly_expenses": 3857,
     "current_savings": 20000,
     "extra_income": 6000,
+    "current_debts": null,
     "goals": [{"name": "primary goal", "goal_price": 800000}],
     "all_numbers": [4000, 20000, ...],
     "assumptions": [],
@@ -33,6 +34,8 @@ Extract financial data without saving.
   "token_numbers": [4000, 20000, 800000, ...]
 }
 ```
+
+Note: Fields not mentioned by the user appear as `null` (e.g. `current_debts`) and are hidden from the frontend.
 
 ---
 
@@ -126,8 +129,9 @@ Check Mujarrad API connectivity.
 | `goal_price` | float? | null | Target amount |
 | `monthly_income` | float? | null | Base salary (monthly) |
 | `monthly_expenses` | float? | null | Monthly spending |
-| `current_savings` | float? | 0 | Already saved |
-| `extra_income` | float? | 0 | Bonuses, side income |
+| `current_savings` | float? | null | Already saved (null = unmentioned) |
+| `extra_income` | float? | null | Bonuses, side income (null = unmentioned) |
+| `current_debts` | float? | null | Outstanding debts (null = unmentioned) |
 | `goals` | list | [] | Goal descriptors |
 | `all_numbers` | list[float] | [] | All detected numbers |
 | `assumptions` | list[str] | [] | Processing notes |

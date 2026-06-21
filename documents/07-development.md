@@ -43,12 +43,9 @@ cd backend
 
 # Specific file
 .venv\Scripts\python -m pytest tests/test_calculator.py -v
-
-# With coverage
-.venv\Scripts\python -m pytest tests -v --cov=app
 ```
 
-**Test count:** 76 tests across 6 files.
+**Test count:** 85 tests across 6 files.
 
 ---
 
@@ -94,14 +91,14 @@ Then open `http://localhost:5173`.
 
 ## spaCy Model
 
-spaCy is in `requirements.txt` but the model file (`en_core_web_sm`) is optional:
+spaCy is NOT in `requirements.txt` — it is optional:
 
 ```powershell
 cd backend
 .venv\Scripts\python -m spacy download en_core_web_sm
 ```
 
-Without the model, the system works fine (regex-only number extraction). The model adds `like_num` token detection and NER entity extraction as additional hints for the LLM.
+Without the model, the system works fine (regex-only number extraction). The model adds `like_num` token detection as additional hints.
 
 ---
 

@@ -1,16 +1,24 @@
 # AI Pipeline
 
-The extraction pipeline has 4 stages: segmentation → LLM extraction → aggregation → calculation.
+The extraction pipeline has 5 stages: segmentation → LLM extraction → aggregation → calculation → storage.
 
 ---
 
-## Stage 1: Text Segmentation (`segmenter.py`)
+## Stage 1: Text Segmentation (`segmenter.py` + LLM #1)
 
 **Purpose:** Split user message into atomic "thought units" for independent analysis.
 
-**Method:** Regex-based (not LLM). Arabic-aware.
+### Method: Two-tier
 
-### Split Rules
+#### Tier 1: LLM #1 — `segment_with_llm()`
+- Calls GPT-4o-mini with `SEGMENTER_PROMPT` → `{"segments": [...]}`
+- Temperature=0, timeout=10s
+- Understands Arabic context: knows that و joins separate thoughts
+
+#### Tier 2: Fallback — Regex `segment_text()`
+Used when LLM is unavailable/fails.
+
+### Regex Split Rules
 - English sentence boundaries: `. ` `! ` `? ` (period + space)
 - Arabic sentence boundaries: `؟ ` (Arabic question mark + space)
 - Newlines: `\n`
@@ -18,19 +26,20 @@ The extraction pipeline has 4 stages: segmentation → LLM extraction → aggreg
   - `800000ولدي` → `800000. ولدي` (then splits at `. `)
   - `ادخار20000مرتب50000` → `ادخار20000. مرتب50000`
   - NO splitting inside words: `اسبوعي` stays as `اسبوعي` (not `اسب. وعي`)
+- Uses `(\d+)` (full number, not single digit) to prevent number corruption
 
 ### Max Segments
 - Hard limit: **15 segments**
 - Beyond 15: truncated, excess merged into last segment
 
-### Why not LLM for segmentation?
-Earlier experiments used an LLM segmenter, but GPT hallucinated word-internal splits in Arabic (سببوعي → اسب/وعي, حوافز → ح/وافز). The regex segmenter is deterministic and handles Arabic correctly.
+### Why an LLM segmenter?
+Earlier experiments used only regex, but Arabic text often lacks clear delimiters. The LLM understands that "دخلي 50000 ومصروفي 10000" are two separate facts joined by و. The regex handles attached numbers while the LLM handles semantic splitting.
 
 ---
 
 ## Stage 2: Number Extraction (`nlp.py`)
 
-**Purpose:** Find all numeric values in text before LLM processing (for fallback use).
+**Purpose:** Find all numeric values in text before LLM processing (for fallback use and hints).
 
 **Method:** Two-pass:
 1. Regex pattern matching: `(?:[$€£])?\s*\d+(?:,\d{3})*(?:\.\d+)?[kKmM]?`
@@ -38,27 +47,42 @@ Earlier experiments used an LLM segmenter, but GPT hallucinated word-internal sp
 
 **Output:** `list[float]` — deduplicated list of all numbers found.
 
-**Also:** `extract_entities()` uses spaCy NER to find MONEY, DATE, CARDINAL, PERCENT, QUANTITY entities — passed to LLM as hints.
-
 ---
 
 ## Stage 3: LLM Extraction (`openai_service.py`)
 
-**Purpose:** Classify each number into the correct financial field using GPT.
+**Purpose:** Classify each number into the correct financial field using GPT, with time unit normalization.
 
-### Two LLM Calls
+### Time Unit Normalization Pipeline
 
-#### Call 1: Segmenter (LLM fallback)
-**Prompt:** `SEGMENTER_PROMPT` — asks LLM to split the message into segments at natural boundaries.
-**Fallback:** If LLM fails/unavailable → regex `segmenter.py`.
+The system normalizes ANY time unit to monthly equivalents:
 
-#### Call 2: Extractor
-**Prompt:** `EXTRACTION_PROMPT` — instructs LLM to:
-1. Read each `[index] segment`
-2. Extract all numeric values
-3. Classify into correct field
-4. **Normalize time values to monthly** using the conversion table
-5. Return JSON with `segment_index`, `field`, `value`
+#### Dictionary Lookup (`extract_time_unit`)
+Matches time phrases against `TIME_UNITS` dict with word-boundary regex:
+- `hourly`, `per hour`, `بالساعة`, `كل ساعة` → ×171.43
+- `daily`, `per day`, `يومياً`, `في اليوم`, `يومي`, `كل يوم` → ×30
+- `weekly`, `per week`, `اسبوعياً`, `في الاسبوع`, `كل اسبوع`, `أسبوعي` → ×4.2857
+- `biweekly`, `bi-weekly`, `كل اسبوعين`, `كل أسبوعين` → ×2.1429
+- `every 10 days`, `كل 10 ايام`, `عشرة ايام` → ×3
+- `monthly`, `per month`, `شهرياً`, `في الشهر`, `كل شهر` → ×1
+- `semi-monthly`, `semi-monthly`, `نصف شهري`, `مرتين بالشهر` → ×2
+- `quarterly`, `كل 3 شهور`, `ربع سنوي` → ×1/3
+- `semi-annually`, `كل 6 شهور`, `نصف سنوي` → ×1/6
+- `yearly`, `per year`, `سنوياً`, `في السنة`, `كل سنة`, `سنوي`, `كل عام` → ×1/12
+- `biennially`, `كل سنتين`, `سنتين`, `كل عامين` → ×1/24
+- 25+ Arabic variants including all hamza forms (أسبوع, الأسبوع)
+
+#### General Pattern Matching (`_TIME_GENERAL_PATTERNS`)
+For patterns like `كل 2 شهر` or `every 3 months`:
+- Extracts the count (e.g. 2, 3)
+- Computes multiplier = 1 / count (e.g. `كل 2 شهر` → multiplier 0.5)
+- Returns computed value as `__MULT_<float>__` string
+
+#### Value Normalization (`normalize_value`)
+1. Parses time unit from text
+2. If known unit → multiply by stored multiplier
+3. If `__MULT_<float>__` → parse and multiply
+4. If no unit → keep as-is (assumed monthly)
 
 ### Time Normalization Table
 
@@ -75,24 +99,18 @@ Earlier experiments used an LLM segmenter, but GPT hallucinated word-internal sp
 | semi-annually | ÷ 6 | ÷ 6 months |
 | yearly / annually | ÷ 12 | ÷ 12 months |
 | biennially | ÷ 24 | ÷ 24 months |
+| كل N شهر/أسبوع/يوم | ÷ N | computed multiplier |
 
-Normalize = multiply the stated value by the multiplier to get the monthly equivalent.
+### EXTRACTION_PROMPT
 
-### EXTRACTION_PROMPT Examples (~31 organized examples)
+The LLM is instructed to:
+1. Read each `[index] segment`
+2. Extract all numeric values
+3. Classify into correct field (goal, income, expenses, savings, extra, debts)
+4. **Normalize time values to monthly** using the conversion table
+5. Return JSON with `segment_index`, `field`, `value`
 
-Examples in the prompt demonstrate each field × multiple time units. They serve as format reference, with the instruction: **"DO NOT copy example values — COMPUTE using the table multiplier."**
-
-### NER Entity Hints
-
-spaCy NER results appended after segments:
-```
-NER financial entities detected in text:
-- MONEY: "4,000"
-- MONEY: "800,000"
-- DATE: "per week"
-```
-
-The LLM uses these as hints but always verifies against the segment text.
+Examples in the prompt demonstrate each field × multiple time units. Instruction: **"DO NOT copy example values — COMPUTE using the table multiplier."**
 
 ### Fallback (`heuristic_extract`)
 
@@ -100,7 +118,7 @@ If LLM is unavailable (no API key or API error):
 1. `extract_number_mentions()` — regex finds all number mentions
 2. Stores them in `all_numbers` list
 3. **No field classification** (LLM is the sole classifier)
-4. `apply_intelligent_defaults()` — fills None→0
+4. `apply_intelligent_defaults()` — fills None→0 for calculator math
 
 ---
 
@@ -121,8 +139,9 @@ Rules:
 After extraction, the calculator computes the timeline:
 
 ```python
-net_savings = income + extra - expenses
-remaining = max(goal - savings, 0)
+net_savings = (income or 0) + (extra or 0) - (expenses or 0)
+effective_savings = max((savings or 0) - (debts or 0), 0)
+remaining = max(goal - effective_savings, 0)
 months = ceil(remaining / net_savings)
 ```
 
@@ -134,9 +153,20 @@ months = ceil(remaining / net_savings)
 | Already funded (`remaining == 0`) | Months = 0, "already achieved" |
 | Negative/zero savings | Unachievable, suggests reducing expenses |
 | Achievable | `format_duration(months)` → "5 months", "1 year", "2 years and 3 months" |
+| Debts present | `effective_savings = savings - debts` (debts reduce available capital) |
 
 ### Suggestions (max 3)
 1. Always: "Keep at least {net_savings} per month reserved"
 2. If >12 months: "A small income increase or expense reduction can shorten the timeline"
 3. If expenses > 60% of income: "Review fixed costs"
 4. If multiple goals: "Prioritize one goal at a time"
+
+---
+
+## Stage 6: Background Storage
+
+Storage runs as `asyncio.create_task(_store_async(...))` to avoid blocking the response:
+- RAW segments → saved in parallel with `asyncio.gather`
+- Classified segments → updated in parallel with `asyncio.gather`
+- Chat record → saved after segment operations
+- All failures → logged only, never surfaced to user
