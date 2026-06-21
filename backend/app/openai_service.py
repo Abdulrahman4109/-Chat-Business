@@ -144,18 +144,16 @@ Fields:
 - goal_price: one-time purchase target (a car, a house, something you buy once)
 - monthly_income: primary recurring income (salary, wages, pension, regular allowance)
 - monthly_expenses: recurring spending (bills, rent, transportation, food, utilities)
-- current_savings: what the user already owns or is owed — one-time assets, lump sums, checks without time period, stocks, notes receivable, deposits, cash on hand
-- extra_income: secondary RECURRING income (monthly bonuses, weekly commissions, freelance income, side income with a time unit)
-- current_debts: what the user owes — one-time liabilities, loans, notes payable (OUTFLOW, reduces savings once)
+- current_savings: one-time / lump sum amounts the user already has or will receive once (assets, cash, checks without time period, notes receivable, deposits, stocks)
+- extra_income: secondary recurring / periodic income (happens every week/month/year — bonuses, commissions, freelance, side income with a time unit attached)
+- current_debts: one-time / lump sum amounts the user owes or must pay once (loans, notes payable, liabilities)
 
-Think about the nature of each amount:
-- Recurring (weekly, monthly, yearly) → income/expenses/extra_income
-- One-time / lump sum → savings/debts/goal
-- إذا كان المبلغ لمرة واحدة (شيك، اسهم، اوراق قبض، وديعة، مبلغ نقدي) → current_savings
-- إذا كان المبلغ متكرر (مرتب، حوافز شهرية، دخل جانبي أسبوعي) → monthly_income or extra_income
-- إذا كان المبلغ يُدفع (قرض، دين، اوراق دفع) → current_debts
-- "شيك بقيمة X" بدون فترة زمنية = one-time receipt → current_savings
-- "شيك X شهرياً" مع فترة زمنية = recurring → extra_income
+The ONLY question is: recurring or one-time?
+- Is there a time period (weekly, monthly, yearly, hourly, كل, في ال, شهرياً, أسبوعياً)? → recurring → monthly_income / extra_income / monthly_expenses
+- Is it a single amount with no time period? → one-time / lump sum → goal_price / current_savings / current_debts
+- Does the money come IN (income, receipt, asset)? → monthly_income / extra_income / current_savings
+- Does the money go OUT (purchase, expense, debt)? → monthly_expenses / current_debts / goal_price
+- A one-time bonus, a check, stocks, notes, cash held — these are one-time receipts → current_savings (NOT extra_income, because extra_income requires recurrence).
 
 Return ONLY valid JSON:
 {"extractions": [{"segment_index": 0, "field": "monthly_income", "raw_value": 5000.0, "time_unit": ""}]}
