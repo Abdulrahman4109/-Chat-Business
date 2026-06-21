@@ -28,7 +28,7 @@ The extraction pipeline has 5 stages: number extraction → segmentation → LLM
 - Understands Arabic context: knows that و joins separate thoughts
 
 #### Tier 2: Fallback — Regex `segment_text()`
-Used when LLM is unavailable/fails.
+Used when LLM is unavailable or fails.
 
 ### Regex Split Rules
 - English sentence boundaries: `. ` `! ` `? ` (period + space)
@@ -44,7 +44,7 @@ Used when LLM is unavailable/fails.
 - Hard limit: **15 segments**
 - Beyond 15: truncated, excess merged into last segment
 
-### Why an LLM segmenter?
+### Rationale
 Earlier experiments used only regex, but Arabic text often lacks clear delimiters. The LLM understands that "دخلي 50000 ومصروفي 10000" are two separate facts joined by و. The regex handles attached numbers while the LLM handles semantic splitting.
 
 ---
@@ -136,7 +136,3 @@ months = ceil(remaining / net_savings)
 2. If >12 months: "A small income increase or expense reduction can shorten the timeline"
 3. If expenses > 60% of income: "Review fixed costs"
 4. If multiple goals: "Prioritize one goal at a time"
-
----
-
-

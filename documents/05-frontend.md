@@ -1,6 +1,6 @@
 # Frontend
 
-React 19 + Vite single-page application with dark theme.
+React 19 + Vite single-page application with a dark theme.
 
 ---
 
@@ -16,8 +16,8 @@ React 19 + Vite single-page application with dark theme.
 | `messages[]` | ChatMessage[] | Local state + API | Message history for current conversation |
 | `input` | string | Textarea | Current input text |
 | `history[]` | ChatRecord[] | GET /history | All past conversations |
-| `loading` | boolean | | Loading indicator |
-| `sidebarOpen` | boolean | | Mobile sidebar toggle |
+| `loading` | boolean | — | Loading indicator |
+| `sidebarOpen` | boolean | — | Mobile sidebar toggle |
 | `abortRef` | ref | AbortController | Cancel in-flight request |
 
 **Key Handlers:**
@@ -61,7 +61,7 @@ In development, Vite proxies:
 /mujarrad → http://localhost:8001
 ```
 
-**Why 8001 not 8000?** The Vite dev server runs on 5173 and proxies to 8001. The backend can run on either — the proxy configuration targets 8001.
+**Why 8001 not 8000?** The Vite dev server runs on 5173 and proxies to 8001. The backend can run on either port — the proxy configuration targets 8001.
 
 ---
 

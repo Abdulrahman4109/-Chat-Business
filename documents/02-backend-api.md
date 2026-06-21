@@ -1,5 +1,7 @@
 # Backend API
 
+Complete reference for all HTTP endpoints.
+
 ## Routes
 
 ### GET `/health`
@@ -35,7 +37,7 @@ Extract financial data without saving.
 }
 ```
 
-Note: Fields not mentioned by the user appear as `null` (e.g. `current_debts`) and are hidden from the frontend.
+Fields not mentioned by the user appear as `null` (e.g. `current_debts`) and are hidden from the frontend.
 
 ---
 
@@ -66,7 +68,7 @@ Compute timeline from structured FinancialData.
 
 ### POST `/chat` (main endpoint)
 
-Full pipeline: extract → calculate → save → respond.
+Full pipeline: extract → calculate → respond → background store.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -126,13 +128,13 @@ Check Mujarrad API connectivity.
 ### FinancialData
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `goal_price` | float? | null | Target amount |
-| `monthly_income` | float? | null | Base salary (monthly) |
+| `goal_price` | float? | null | Target purchase amount |
+| `monthly_income` | float? | null | Base salary (monthly normalized) |
 | `monthly_expenses` | float? | null | Monthly spending |
 | `current_savings` | float? | null | Already saved (null = unmentioned) |
 | `extra_income` | float? | null | Bonuses, side income (null = unmentioned) |
 | `current_debts` | float? | null | Outstanding debts (null = unmentioned) |
-| `goals` | list | [] | Goal descriptors |
+| `goals` | list[dict] | [] | Goal descriptors (largest = primary) |
 | `all_numbers` | list[float] | [] | All detected numbers |
 | `assumptions` | list[str] | [] | Processing notes |
 | `segments` | list[dict] | [] | Per-segment classifications |
@@ -141,7 +143,7 @@ Check Mujarrad API connectivity.
 | Field | Type | Description |
 |-------|------|-------------|
 | `net_monthly_savings` | float | income + extra - expenses |
-| `remaining`| float | goal - savings (min 0) |
+| `remaining` | float | goal - savings (min 0) |
 | `months` | int? | Months to goal (null = unachievable) |
 | `raw_months` | float? | Exact months before ceiling |
 | `duration_display` | str | "5 months", "1 year", "2 years and 3 months" |

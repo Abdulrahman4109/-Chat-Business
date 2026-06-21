@@ -1,5 +1,7 @@
 # Architecture
 
+A detailed breakdown of the project's directory layout, request lifecycle, and data flow.
+
 ## Project Structure
 
 ```
@@ -100,5 +102,3 @@ Response → Frontend
                   │   + background async POST to Mujarrad) │
                   └────────────────────────────────────────┘
 ```
-
-

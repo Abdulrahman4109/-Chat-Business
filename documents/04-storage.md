@@ -1,6 +1,6 @@
 # Storage System
 
-The system uses two storage layers: local JSON (always) and remote Mujarrad API (background, best-effort).
+The system uses two storage layers: local JSON (always synchronous) and remote Mujarrad API (background, best-effort).
 
 ---
 
@@ -8,7 +8,7 @@ The system uses two storage layers: local JSON (always) and remote Mujarrad API 
 
 **Path:** `~/.mujarrad-chat/history.json`
 
-Created automatically on first `save_chat_record()`. Falls back to system temp directory if `~` is unwritable.
+Created automatically on first `save_chat_record()`. Falls back to the system temp directory if `~` is unwritable.
 
 **Format:** JSON array of serialized `ChatRecord` dicts.
 
@@ -23,7 +23,7 @@ Created automatically on first `save_chat_record()`. Falls back to system temp d
 
 Storage operations run as an `asyncio.create_task` fired after the response is constructed. The response returns immediately without waiting for storage.
 
-Two separate "spaces" (equivalent to collections/tables):
+Two separate "spaces" (equivalent to collections or tables):
 
 ### 1. Chat History Space (`chat` slug)
 
@@ -45,11 +45,13 @@ Two separate "spaces" (equivalent to collections/tables):
 | nodeType | `REGULAR` |
 | nodeDetails | `{id, user_id, conversation_id, segment_index, text, classifications}` |
 
-**Used for:** Per-sentence financial data analysis, auditing.
+**Used for:** Per-sentence financial data analysis and auditing.
 
 **Saved twice per message:**
-1. **RAW** (before LLM): segment text without classifications
-2. **CLASSIFIED** (after LLM): segment text + financial field classifications
+1. **RAW** — segment text without classifications
+2. **CLASSIFIED** — segment text + financial field classifications
+
+Both saves happen in a single background task (`_store_async`) after the LLM and calculator complete.
 
 ### API Authentication
 

@@ -2,7 +2,7 @@
 
 ## What is this?
 
-A bilingual (Arabic/English) conversational AI that turns casual financial chat into a structured goal-timeline projection.
+A bilingual (Arabic/English) conversational AI that transforms casual financial chat into a structured goal-timeline projection.
 
 You type something like:
 
@@ -87,9 +87,9 @@ User → React (Vite :5173)
 | Frontend | React 19, Vite, Lucide icons (port 5173) |
 | Storage | Local JSON (`~/.mujarrad-chat/`) + Mujarrad REST API |
 
-## Why It Works (vs. Naive Approaches)
+## Key Design Principles
 
-- **LLM understands meaning, not keywords** — "عايز أشتري", "هدفى", "نفسي في", "save for", "need" all map to `goal_price`. No keyword lists, no regex patterns for each field.
+- **Semantic understanding, not keywords** — "عايز أشتري", "هدفى", "نفسي في", "save for", "need" all map to `goal_price`. No keyword lists, no regex patterns for each field.
 - **Time-unit agnostic** — hourly, daily, weekly, biweekly, monthly, quarterly, yearly, biennially, plus all Arabic variants including computed multipliers (`كل 2 شهر` → ×0.5). Every unit normalizes to a standard month.
 - **Background storage** — Mujarrad can be slow or down; it never slows the user's response.
 - **None ≠ 0** — unmentioned fields stay `None` and are hidden from the UI. The user sees only what they actually said.
