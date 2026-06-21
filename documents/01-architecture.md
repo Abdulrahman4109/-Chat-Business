@@ -67,14 +67,15 @@ Backend main.py::chat()
   1. extract_numbers(message)        ← regex + spaCy → raw numbers
   2. LLM #1: segment_with_llm()     ← GPT → segments[]
      ↳ Fallback: segmenter.segment_text() (regex)
-  3. save segment nodes (RAW)        ← Mujarrad "example" (async, parallel)
-  4. LLM #2: extract()              ← GPT → FinancialData
+  3. LLM #2: extract()              ← GPT → FinancialData
      a. extract_time_unit()         ← parse time phrases
      b. normalize_value()           ← compute monthly equivalent
      c. _aggregate_segment_extractions() ← merge into FinancialData
-  5. calculate_goal(data)           ← calculator → CalculationResult
-  6. update segment nodes (classified) ← Mujarrad "example" (async, parallel)
-  7. _store_async()                 ← Local JSON + Mujarrad (background task)
+  4. calculate_goal(data)           ← calculator → CalculationResult
+  5. _store_async (background)      ← after response returns:
+     ├─ save RAW segments (parallel)
+     ├─ update classified segments (parallel)
+     └─ save chat record → local + Mujarrad
        ↓
 Response → Frontend
   { conversation_id, assistant_message, extracted_data, calculation }
@@ -103,11 +104,4 @@ Response → Frontend
                   └────────────────────────────────────────┘
 ```
 
-## Two Storage Spaces in Mujarrad
 
-| Space Slug | Purpose | Node Titles |
-|-----------|---------|------------|
-| `chat` | Full chat records | `chat-{uuid}` |
-| `example` | Financial segment nodes | `seg-{conv_id}-{idx}` |
-
-Why two spaces? Chat records contain full conversations (for history sidebar). Segment nodes contain per-sentence financial classifications (for data analysis/auditing).

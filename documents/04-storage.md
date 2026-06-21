@@ -81,15 +81,6 @@ get_history(user_id)
   └── 3. Return
 ```
 
-## Why Background Storage?
-
-The `/chat` endpoint response is constructed FROM the LLM + calculator output, not from storage. Firing storage as `asyncio.create_task` cuts ~2–6 POSTs out of the critical path, returning the response to the user instantly. Failures in background storage are logged and never surfaced.
-
-## Why Two Spaces?
-
-- **Chat space** = conversation records for the history UI (complete with messages, extracted data, calculation)
-- **Example space** = financial segment nodes for per-sentence classification visibility (independent of conversation context)
-
 ## Configuration
 
 Set in `.env`:

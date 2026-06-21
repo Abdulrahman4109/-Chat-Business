@@ -1,10 +1,22 @@
 # AI Pipeline
 
-The extraction pipeline has 5 stages: segmentation → LLM extraction → aggregation → calculation → storage.
+The extraction pipeline has 5 stages: number extraction → segmentation → LLM extraction (with aggregation) → calculation → background storage.
 
 ---
 
-## Stage 1: Text Segmentation (`segmenter.py` + LLM #1)
+## Stage 1: Number Extraction (`nlp.py`)
+
+**Purpose:** Find all numeric values in text before LLM processing.
+
+**Method:** Two-pass:
+1. Regex pattern matching: `(?:[$€£])?\s*\d+(?:,\d{3})*(?:\.\d+)?[kKmM]?`
+2. spaCy `like_num` token detection (if spaCy model is loaded)
+
+**Output:** `list[float]` — deduplicated list of all numbers found.
+
+---
+
+## Stage 2: Text Segmentation (`segmenter.py` + LLM #1)
 
 **Purpose:** Split user message into atomic "thought units" for independent analysis.
 
@@ -34,18 +46,6 @@ Used when LLM is unavailable/fails.
 
 ### Why an LLM segmenter?
 Earlier experiments used only regex, but Arabic text often lacks clear delimiters. The LLM understands that "دخلي 50000 ومصروفي 10000" are two separate facts joined by و. The regex handles attached numbers while the LLM handles semantic splitting.
-
----
-
-## Stage 2: Number Extraction (`nlp.py`)
-
-**Purpose:** Find all numeric values in text before LLM processing (for fallback use and hints).
-
-**Method:** Two-pass:
-1. Regex pattern matching: `(?:[$€£])?\s*\d+(?:,\d{3})*(?:\.\d+)?[kKmM]?`
-2. spaCy `like_num` token detection (if spaCy model is loaded)
-
-**Output:** `list[float]` — deduplicated list of all numbers found.
 
 ---
 
@@ -84,33 +84,9 @@ For patterns like `كل 2 شهر` or `every 3 months`:
 3. If `__MULT_<float>__` → parse and multiply
 4. If no unit → keep as-is (assumed monthly)
 
-### Time Normalization Table
-
-| Input Time Unit | Multiplier | Formula |
-|----------------|-----------|---------|
-| per hour / hourly | × 171.43 | 40h/week × 30/7 days |
-| per day / daily | × 30 | 30 days/month |
-| per week / weekly | × 4.2857 | 30 ÷ 7 |
-| bi-weekly / كل اسبوعين | × 2.1429 | 30 ÷ 14 |
-| every 10 days | × 3 | 30 ÷ 10 |
-| per month / monthly | × 1 | keep as-is |
-| semi-monthly (twice/month) | × 2 | — |
-| quarterly | ÷ 3 | ÷ 3 months |
-| semi-annually | ÷ 6 | ÷ 6 months |
-| yearly / annually | ÷ 12 | ÷ 12 months |
-| biennially | ÷ 24 | ÷ 24 months |
-| كل N شهر/أسبوع/يوم | ÷ N | computed multiplier |
-
 ### EXTRACTION_PROMPT
 
-The LLM is instructed to:
-1. Read each `[index] segment`
-2. Extract all numeric values
-3. Classify into correct field (goal, income, expenses, savings, extra, debts)
-4. **Normalize time values to monthly** using the conversion table
-5. Return JSON with `segment_index`, `field`, `value`
-
-Examples in the prompt demonstrate each field × multiple time units. Instruction: **"DO NOT copy example values — COMPUTE using the table multiplier."**
+See `EXTRACTION_PROMPT` in `openai_service.py`. Key instruction: **"DO NOT copy example values — COMPUTE using the table multiplier."**
 
 ### Fallback (`heuristic_extract`)
 
@@ -122,7 +98,7 @@ If LLM is unavailable (no API key or API error):
 
 ---
 
-## Stage 4: Aggregation (`_aggregate_segment_extractions`)
+### Aggregation (inside LLM Extraction — `_aggregate_segment_extractions`)
 
 **Purpose:** Merge per-segment extractions into a single `FinancialData` object.
 
@@ -134,7 +110,7 @@ Rules:
 
 ---
 
-## Stage 5: Calculation (`calculator.py`)
+## Stage 4: Calculation (`calculator.py`)
 
 After extraction, the calculator computes the timeline:
 
@@ -163,10 +139,4 @@ months = ceil(remaining / net_savings)
 
 ---
 
-## Stage 6: Background Storage
 
-Storage runs as `asyncio.create_task(_store_async(...))` to avoid blocking the response:
-- RAW segments → saved in parallel with `asyncio.gather`
-- Classified segments → updated in parallel with `asyncio.gather`
-- Chat record → saved after segment operations
-- All failures → logged only, never surfaced to user

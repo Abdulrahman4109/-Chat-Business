@@ -39,24 +39,13 @@ User → React Frontend (Vite:5173)
          ↓ POST /chat
       FastAPI Backend (uvicorn:8000)
          ↓
-      1. extract_numbers()         — Regex + spaCy
-      2. LLM #1: segment_with_llm() — GPT splits into segments
-         ↳ Fallback: segmenter.segment_text() (regex)
-      3. save RAW segments          — to Mujarrad (background, parallel)
-      4. LLM #2: extract()          — GPT classifies + normalizes time units
-         ↳ Fallback: heuristic_extract() (numbers only)
-      5. calculate_goal()           — Timeline math (with debts support)
-      6. save chat record           — Local JSON + Mujarrad (background)
+       1. extract_numbers()         — Regex + spaCy
+     2. LLM #1: segment_with_llm() — GPT splits into segments
+        ↳ Fallback: segmenter.segment_text() (regex)
+     3. LLM #2: extract()          — GPT classifies + normalizes time units
+        ↳ Fallback: heuristic_extract() (numbers only)
+     4. calculate_goal()           — Timeline math (with debts support)
+     5. _store_async (background)  — Raw segs → classified → chat record
          ↓
       Response → Frontend → Bubble (text + metric grid + result panel)
 ```
-
-## Technology Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Backend | Python 3.13, FastAPI, uvicorn |
-| AI | OpenAI gpt-4o-mini (via OpenRouter) |
-| Frontend | React 19, Vite, Lucide icons |
-| Storage | Local JSON (~/.mujarrad-chat/) + Mujarrad REST API |
-| Deployment | Local uvicorn + static hosting |
