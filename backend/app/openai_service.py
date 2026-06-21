@@ -144,16 +144,18 @@ Fields:
 - goal_price: one-time purchase target (a car, a house, something you buy once)
 - monthly_income: primary recurring income (salary, wages, pension, regular allowance)
 - monthly_expenses: recurring spending (bills, rent, transportation, food, utilities)
-- current_savings: what the user already owns or is owed — assets, one-time receipts, notes receivable
-- extra_income: secondary recurring income (bonuses, commissions, freelance, side income, dividends, regular checks/notes with time units)
+- current_savings: what the user already owns or is owed — one-time assets, lump sums, checks without time period, stocks, notes receivable, deposits, cash on hand
+- extra_income: secondary RECURRING income (monthly bonuses, weekly commissions, freelance income, side income with a time unit)
 - current_debts: what the user owes — one-time liabilities, loans, notes payable (OUTFLOW, reduces savings once)
 
 Think about the nature of each amount:
-- Is it recurring or one-time? (recurring → monthly_income/expenses/extra_income; one-time → savings/debts/goal)
-- Does it come IN or go OUT? (IN → income/savings/extra; OUT → expenses/debts/goal)
-- Is it primary or secondary income? (main job → monthly_income; side/irregular → extra_income)
-- Assets and receivables → current_savings. Liabilities and payables → current_debts.
-- A check/note with a time period (weekly, monthly) → recurring income; with no time period → one-time receipt → current_savings.
+- Recurring (weekly, monthly, yearly) → income/expenses/extra_income
+- One-time / lump sum → savings/debts/goal
+- إذا كان المبلغ لمرة واحدة (شيك، اسهم، اوراق قبض، وديعة، مبلغ نقدي) → current_savings
+- إذا كان المبلغ متكرر (مرتب، حوافز شهرية، دخل جانبي أسبوعي) → monthly_income or extra_income
+- إذا كان المبلغ يُدفع (قرض، دين، اوراق دفع) → current_debts
+- "شيك بقيمة X" بدون فترة زمنية = one-time receipt → current_savings
+- "شيك X شهرياً" مع فترة زمنية = recurring → extra_income
 
 Return ONLY valid JSON:
 {"extractions": [{"segment_index": 0, "field": "monthly_income", "raw_value": 5000.0, "time_unit": ""}]}
