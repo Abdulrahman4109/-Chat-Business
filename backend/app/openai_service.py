@@ -285,6 +285,11 @@ def _aggregate_segment_extractions(
             seg_map[seg_idx] = []
         seg_map[seg_idx].append({"field": field, "raw_value": raw_value, "time_unit": time_unit, "value": value})
 
+        # STRICT RULE: extra_income requires a time period (recurring).
+        # Without a time unit, it is one-time → must be current_savings.
+        if field == "extra_income" and not time_unit:
+            field = "current_savings"
+
         if field == "goal_price":
             goals.append({"name": "primary goal", "goal_price": value})
             if data.goal_price is None or value > data.goal_price:

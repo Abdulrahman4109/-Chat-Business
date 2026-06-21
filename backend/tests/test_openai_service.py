@@ -58,12 +58,12 @@ class TestAggregateSegmentExtractions:
 
     def test_sum_same_field_across_segments(self):
         extractions = [
-            {"segment_index": 0, "field": "extra_income", "value": 1000},
-            {"segment_index": 1, "field": "extra_income", "value": 2000},
+            {"segment_index": 0, "field": "extra_income", "value": 1000, "time_unit": "weekly"},
+            {"segment_index": 1, "field": "extra_income", "value": 2000, "time_unit": "monthly"},
         ]
-        segments_text = ["bonus 1000", "side 2000"]
+        segments_text = ["bonus 1000 weekly", "side 2000 monthly"]
         result = _aggregate_segment_extractions(extractions, [1000, 2000], segments_text)
-        assert result.extra_income == 3000.0
+        assert result.extra_income == 6285.7  # 1000*4.2857 + 2000*1
         assert len(result.segments) == 2
         assert result.segments[0]["classifications"][0]["field"] == "extra_income"
         assert result.segments[1]["classifications"][0]["field"] == "extra_income"
@@ -84,19 +84,19 @@ class TestAggregateSegmentExtractions:
             {"segment_index": 0, "field": "goal_price", "value": 600000},
             {"segment_index": 1, "field": "current_savings", "value": 200000},
             {"segment_index": 2, "field": "monthly_income", "value": 10000},
-            {"segment_index": 3, "field": "extra_income", "value": 4000},
-            {"segment_index": 4, "field": "extra_income", "value": 3000},
+            {"segment_index": 3, "field": "extra_income", "value": 4000, "time_unit": "monthly"},
+            {"segment_index": 4, "field": "extra_income", "value": 3000, "time_unit": "weekly"},
             {"segment_index": 5, "field": "monthly_expenses", "value": 4000},
         ]
         result = _aggregate_segment_extractions(
             extractions,
             [600000, 200000, 10000, 4000, 3000, 4000],
-            ["car worth 600000", "200000 savings", "salary 10000", "bonuses 4000", "extra 3000", "expenses 4000"],
+            ["car worth 600000", "200000 savings", "salary 10000", "bonuses 4000 monthly", "extra 3000 weekly", "expenses 4000"],
         )
         assert result.goal_price == 600000.0
         assert result.current_savings == 200000.0
         assert result.monthly_income == 10000.0
-        assert result.extra_income == 7000.0
+        assert result.extra_income == 16857.1  # 4000*1 + 3000*4.2857
         assert result.monthly_expenses == 4000.0
         assert len(result.goals) == 1
         assert len(result.segments) == 6
