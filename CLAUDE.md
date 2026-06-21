@@ -31,25 +31,25 @@
 ## Extraction Pipeline (`/chat` flow)
 
 1. **`nlp.extract_numbers(message)`** — regex + spaCy tokenizer → `list[float]`
-2. **`segmenter.segment_text(message)`** — regex splitter → `list[str]`
-3. **LLM #1 — `OpenAIExtractionService.segment_with_llm(message)`**:
+2. **LLM #1 — `OpenAIExtractionService.segment_with_llm(message)`**:
    - Calls GPT with `SEGMENTER_PROMPT` → `{"segments": [...]}`
-   - Falls back to regex segmenter if LLM unavailable/fails
-4. RAW segment nodes saved to Mujarrad `example` space (background, parallel with asyncio.gather)
-5. **LLM #2 — `OpenAIExtractionService.extract(message, token_numbers, segments)`**:
+   - Falls back to `segmenter.segment_text()` regex splitter if LLM fails
+3. **LLM #2 — `OpenAIExtractionService.extract(message, token_numbers, segments)`**:
    - Time unit normalization: `extract_time_unit()` parses time phrases, `normalize_value()` computes monthly equivalent
    - Supports hourly, daily, weekly, biweekly, every-10-days, semimonthly, monthly, quarterly, semiannually, yearly, biennially
    - Arabic variants: كل شهر, كل أسبوع, أسبوعي, يومي, سنويا, every hamza variant
    - General patterns: `كل 2 شهر` → computed multiplier `__MULT_0.5__`
    - If no API key → `heuristic_extract()` fallback (numbers only, no field classification)
-6. **`_aggregate_segment_extractions()`** — sums same fields across segments, builds `segments[]` list with classifications
-7. Updates segment nodes in Mujarrad with classifications (background, parallel)
-8. **`calculator.calculate_goal(data)`**:
+   - `_aggregate_segment_extractions()` aggregates per-segment results into FinancialData
+4. **`calculator.calculate_goal(data)`**:
    - `net_monthly_savings = income + extra - expenses`
    - `remaining = max(goal - savings, 0)`
    - `effective_savings = max(savings - debts, 0)` when debts present
    - `raw_months = remaining / net_savings` → `ceil()`
-9. **Background storage**: `asyncio.create_task(_store_async(...))` — saves locally then async POSTs to Mujarrad, parallel segment saves with `asyncio.gather`
+5. **Background `_store_async()`** — fired after response returns:
+   - Save raw segments (parallel via `asyncio.gather`)
+   - Update classified segments (parallel via `asyncio.gather`)
+   - Save chat record → local JSON + Mujarrad POST
 
 ## Heuristics (`backend/app/heuristics.py`)
 

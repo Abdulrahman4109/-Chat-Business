@@ -49,10 +49,7 @@ chat/
     ├── 02-backend-api.md
     ├── 03-ai-pipeline.md
     ├── 04-storage.md
-    ├── 05-frontend.md
-    ├── 06-deployment.md
-    ├── 07-development.md
-    └── 08-training-data.md
+    └── 05-frontend.md
 ```
 
 ## Request Flow (Detailed)
