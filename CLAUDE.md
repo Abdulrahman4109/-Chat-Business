@@ -38,10 +38,17 @@
    - GPT with `SEGMENTER_PROMPT` → `{"segments": [...]}`
    - Falls back to `segmenter.segment_text()` regex splitter if unavailable
 3. **LLM #2 — `extract(message, token_numbers, segments)`**:
-   - Time normalization: `extract_time_unit()` + `normalize_value()`
+   - LLM classifies each number by meaning (not pattern matching) into fields
+   - LLM decides time_unit per field: same word can be TYPE (no unit) or FREQUENCY (set unit) depending on context
+   - No post-LLM validation rules second-guess the LLM (trust, not override)
+   - `extract_time_unit()` fallback: strips punctuation, allows 1 word between time keyword and number
+   - `normalize_value()` converts any time unit → monthly equivalent
    - 11 time units × Arabic/English variants (25+), computed multipliers (`كل 2 شهر` → `__MULT_0.5__`)
    - Fallback: `heuristic_extract()` — numbers only, no field classification
    - `_aggregate_segment_extractions()` merges per-segment results into FinancialData
+     - Same field across segments → summed
+     - Multiple goals → largest wins
+     - Conflict resolution: `(value, segment_index)` key prevents different-segment numbers from colliding
 4. **`calculator.calculate_goal(data)`**:
    - `net_savings = income + extra - expenses`
    - `effective_savings = max(savings - debts, 0)`

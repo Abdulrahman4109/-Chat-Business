@@ -58,7 +58,9 @@ Earlier experiments used only regex, but Arabic text often lacks clear delimiter
 The system normalizes ANY time unit to monthly equivalents:
 
 #### Dictionary Lookup (`extract_time_unit`)
-Matches time phrases against `TIME_UNITS` dict with word-boundary regex:
+- Strips trailing punctuation before matching
+- Two patterns: NUMBER + time unit and TIME unit + NUMBER, both allow 1 word between
+- Matches time phrases against `TIME_UNITS` dict with word-boundary regex:
 - `hourly`, `per hour`, `بالساعة`, `كل ساعة` → ×171.43
 - `daily`, `per day`, `يومياً`, `في اليوم`, `يومي`, `كل يوم` → ×30
 - `weekly`, `per week`, `اسبوعياً`, `في الاسبوع`, `كل اسبوع`, `أسبوعي` → ×4.2857
@@ -86,7 +88,10 @@ For patterns like `كل 2 شهر` or `every 3 months`:
 
 ### EXTRACTION_PROMPT
 
-See `EXTRACTION_PROMPT` in `openai_service.py`. Key instruction: **"DO NOT copy example values — COMPUTE using the table multiplier."**
+See `EXTRACTION_PROMPT` in `openai_service.py`. Key design:
+- Fields defined by **meaning** not keywords
+- LLM decides time_unit by context: same word can be TYPE (شهري in "مرتب شهري" → no unit) or FREQUENCY (شهرياً or "في الشهر" → set unit)
+- "Think about the meaning" — LLM is the primary classifier, no post-hoc override rules
 
 ### Fallback (`heuristic_extract`)
 
@@ -107,6 +112,7 @@ Rules:
 - Multiple `goal_price` values → **take largest** (primary goal)
 - Skip extractions with missing field/value/segment_index
 - Build `segments[]` list with per-segment classifications
+- **Conflict resolution**: only applies to `{monthly_income, current_savings, extra_income}` when same `(value, segment_index)` appears in multiple fields. Lower-priority field is dropped (extra_income > current_savings > monthly_income). Uses `segment_index` in the key so two numbers with the same value in different segments are never conflated.
 
 ---
 

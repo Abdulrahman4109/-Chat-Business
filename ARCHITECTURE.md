@@ -159,8 +159,11 @@ The response returns at step 10. Step 9 runs as a background task.
 
 ## Key Design Decisions
 
-### LLM-First, Regex-Fallback
+### LLM Understands, Regex Backs Up
 - Primary path uses GPT-4o-mini for both segmentation and classification
+- LLM is trusted to understand context: same Arabic word (شهري/اسبوعي/يومي) can be TYPE or FREQUENCY depending on semantics
+- Prompt gives semantic guidance ("think about the meaning") not rigid rules
+- No post-LLM validation rules override the LLM's judgment
 - Regex fallbacks handle offline/API-failure scenarios gracefully
 - Heuristics provide raw numbers only (no keyword classification)
 
@@ -169,11 +172,12 @@ The response returns at step 10. Step 9 runs as a background task.
 - **Extractor** (LLM #2): classifies each segment independently — each number gets its own field
 - Separate prompts, separate concerns, same model
 
-### Time Unit Agnosticism
-- Any time unit normalizes to monthly via `extract_time_unit` + `normalize_value`
-- Dictionary lookup for known units (25+ Arabic/English variants)
-- General pattern matching for computed units (`كل N شهر` → ×1/N)
-- Missing unit = assumed monthly
+### Time Unit Normalization
+- LLM sets time_unit based on context understanding (frequency vs type)
+- `extract_time_unit` fallback: strips punctuation, allows 1 word between keyword and number
+- `normalize_value` converts any unit → monthly equivalent (25+ Arabic/English variants)
+- Missing unit = assumed monthly (for extra_income and monthly_expenses only)
+- Defaults: extra_income without time_unit → monthly; monthly_expenses without time_unit → monthly
 
 ### Background Storage
 - All I/O (local file + Mujarrad API) runs in `asyncio.create_task`
