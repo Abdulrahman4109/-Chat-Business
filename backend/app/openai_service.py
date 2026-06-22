@@ -71,26 +71,24 @@ def _canonical_unit(pattern: str) -> str:
 
 
 def extract_time_unit(text: str, raw_value: float | None = None) -> str:
-    """Find time unit directly adjacent to the specific number (same phrase, no other numbers between)."""
-    text_lower = text.lower()
+    text_lower = text.strip().rstrip('.,!?;:،؛.\n\r').lower()
     val_str = f"{raw_value:.0f}" if raw_value is not None and raw_value == int(raw_value) else str(raw_value) if raw_value is not None else None
     if not val_str:
         return ""
-    # Use word boundaries to avoid matching part of a larger number (e.g. "4000" in "14000")
     val_pattern = r'(?<!\d)' + re.escape(val_str) + r'(?!\d)'
     if not re.search(val_pattern, text_lower):
         return ""
-    # 1) Dictionary patterns: match NUMBER directly followed by time unit, or time unit directly followed by NUMBER
+    # 1) NUMBER + time unit (allow 1 word between)
     for pattern in _TIME_PATTERNS:
-        # Check: NUMBER + optional space + TIME UNIT
-        m = re.search(val_pattern + r'\s*' + re.escape(pattern) + r'(?:\s|$)', text_lower)
+        m = re.search(val_pattern + r'(?:\s+\S+){0,1}\s*' + re.escape(pattern) + r'(?:\s|$)', text_lower)
         if m:
             return _canonical_unit(pattern)
-        # Check: TIME UNIT + optional space + NUMBER
-        m = re.search(re.escape(pattern) + r'\s*' + val_pattern + r'(?:\s|$)', text_lower)
+    # 2) TIME UNIT + NUMBER (allow 1 word between)
+    for pattern in _TIME_PATTERNS:
+        m = re.search(re.escape(pattern) + r'(?:\s+\S+){0,1}\s*' + val_pattern + r'(?:\s|$)', text_lower)
         if m:
             return _canonical_unit(pattern)
-    # 2) General patterns like "كل 3 شهور", "every 2 months"
+    # 3) General patterns like "كل 3 شهور", "every 2 months"
     for pat_re, multiplier_fn in _TIME_GENERAL_PATTERNS:
         m = re.search(pat_re, text_lower)
         if m:
@@ -131,34 +129,35 @@ def normalize_value(raw_value: float, time_unit: str) -> float:
     return raw_value
 
 
-EXTRACTION_PROMPT = """You are a financial data extraction engine. You understand accounting, finance, and how people talk about money in Arabic and English. Analyze each text segment.
+EXTRACTION_PROMPT = """You are a financial data extraction engine. Classify each number into the correct field.
 
-CRITICAL — Do NOT convert values or time units. Only report the EXACT number and time unit as written. Example: if the text says "4000 per week", output raw_value=4000, time_unit="weekly" — NOT 16000/month. The backend handles all normalization.
+Fields by meaning:
+- goal_price: target amount user wants to reach (هدف, عاوز, شراء)
+- monthly_income: the MAIN salary/income only (مرتب, راتب, قبض, أجر أساسي)
+- monthly_expenses: regular spending (مصاريف, إيجار, فواتير)
+- current_savings: one-time ASSETS the user OWNS (cash, عقار, سيارة, أسهم, شيكات, أوراق قبض, ودائع, أرض, any physical or financial asset the user already has)
+- extra_income: ANY extra money beyond the main salary (حوافز, مكافآت, اضافي, إضافي, بدل, علاوة, عمولة, commission, overtime, bonus, extra income, secondary income, side income)
+- current_debts: amounts the user OWES (قروض, أوراق دفع, ديون)
 
-For each number in a segment, decide:
-1. Which field? (use your understanding of finance, not memorized patterns)
-2. raw_value: the exact number, strip commas (4,000 = 4000), support k/m (5k = 5000, 2m = 2000000)
-3. time_unit: if a time period is attached (hourly, daily, weekly, biweekly, tendays, monthly, semimonthly, quarterly, semiannually, yearly, biennially), otherwise ""
+IMPORTANT: حوافز, مكافآت, اضافي, بدل, علاوة ALL go to extra_income, regardless of time words.
 
-Fields:
-- goal_price: one-time purchase target (a car, a house, something you buy once)
-- monthly_income: primary recurring income (salary, wages, pension, regular allowance)
-- monthly_expenses: recurring spending (bills, rent, transportation, food, utilities)
-- current_savings: one-time / lump sum amounts the user already has or will receive once (assets, cash, checks without time period, notes receivable, deposits, stocks)
-- extra_income: secondary recurring / periodic income (happens every week/month/year — bonuses, commissions, freelance, side income with a time unit attached)
-- current_debts: one-time / lump sum amounts the user owes or must pay once (loans, notes payable, liabilities)
+time_unit: set when a word tells you the FREQUENCY (how often): يومي, اسبوعي, شهرياً, سنوياً, في الاسبوع, في الشهر, كل شهر, كل سنة, per week, etc.
+Do NOT set time_unit when the word just describes a TYPE (e.g. "مرتب شهري" = standard salary, not a frequency).
+The same word can be TYPE in one context and FREQUENCY in another — think about the meaning.
 
-The ONLY question is: recurring or one-time?
-- Is there a time period (weekly, monthly, yearly, hourly, كل, في ال, شهرياً, أسبوعياً)? → recurring → monthly_income / extra_income / monthly_expenses
-- Is it a single amount with no time period? → one-time / lump sum → goal_price / current_savings / current_debts
-- Does the money come IN (income, receipt, asset)? → monthly_income / extra_income / current_savings
-- Does the money go OUT (purchase, expense, debt)? → monthly_expenses / current_debts / goal_price
-- A one-time bonus, a check, stocks, notes, cash held — these are one-time receipts → current_savings (NOT extra_income, because extra_income requires recurrence).
+Examples:
+{"segment_index": 0, "field": "monthly_income", "raw_value": 4000.0, "time_unit": ""}       ← "مرتب شهري 40000" (شهري describes type of salary)
+{"segment_index": 0, "field": "monthly_income", "raw_value": 4000.0, "time_unit": "weekly"}← "مرتب 4000 في الاسبوع" (في الاسبوع = frequency)
+{"segment_index": 0, "field": "monthly_income", "raw_value": 3000.0, "time_unit": "weekly"} ← "قبض اسبوعي 3000" (weekly salary = frequency)
+{"segment_index": 0, "field": "monthly_expenses", "raw_value": 100.0, "time_unit": "daily"}← "مصاريف يومية 100" (daily = frequency)
+{"segment_index": 0, "field": "monthly_expenses", "raw_value": 6000.0, "time_unit": ""}     ← "مصاريف شهرية 6000" (general expense type)
+{"segment_index": 0, "field": "extra_income", "raw_value": 4000.0, "time_unit": "weekly"}   ← "اسبوعي حوافز 4000" (weekly = frequency)
+{"segment_index": 0, "field": "extra_income", "raw_value": 2000.0, "time_unit": ""}         ← "اضافي 2000" (no time word)
+{"segment_index": 0, "field": "current_savings", "raw_value": 1000000.0, "time_unit": ""}   ← "عقار بقيمة 1000000"
+{"segment_index": 0, "field": "current_savings", "raw_value": 30000.0, "time_unit": ""}     ← "اسهم بقيمة 30000"
+{"segment_index": 0, "field": "current_debts", "raw_value": 9000.0, "time_unit": ""}        ← "اوراق دفع بقيمة 9000"
 
-Return ONLY valid JSON:
-{"extractions": [{"segment_index": 0, "field": "monthly_income", "raw_value": 5000.0, "time_unit": ""}]}
-
-A "NER financial entities detected" section may be appended below as hints."""
+Return ONLY valid JSON: {"extractions": [...]}"""
 
 
 class OpenAIExtractionService:
@@ -264,7 +263,37 @@ def _aggregate_segment_extractions(
     goals = []
     seg_map: dict[int, list[dict]] = {}
 
+    # Resolve conflicts: same raw_value in competing fields (income/savings/extra)
+    # Keep only the highest-priority assignment (extra_income > current_savings > monthly_income)
+    # Only conflicts apply between these 3 fields, not with expenses/debts/goal
+    conflict_fields = {"monthly_income", "current_savings", "extra_income"}
+    field_priority = {"extra_income": 0, "current_savings": 1, "monthly_income": 2}
+    seen_values: dict[tuple, dict] = {}
+    resolved = []
     for ext in extractions:
+        field = ext.get("field")
+        raw_value = ext.get("raw_value") or ext.get("value")
+        seg_idx = ext.get("segment_index")
+        if field is None or raw_value is None or seg_idx is None:
+            resolved.append(ext)
+            continue
+        try:
+            raw_value = float(raw_value)
+        except (ValueError, TypeError):
+            resolved.append(ext)
+            continue
+        if field not in conflict_fields:
+            resolved.append(ext)
+            continue
+        key = (round(raw_value, 2), seg_idx)
+        if key not in seen_values:
+            seen_values[key] = {"field": field, "raw_value": raw_value, "seg_idx": seg_idx, "ext": ext}
+        elif field_priority.get(field, 99) < field_priority.get(seen_values[key]["field"], 99):
+            seen_values[key] = {"field": field, "raw_value": raw_value, "seg_idx": seg_idx, "ext": ext}
+    resolved.extend(v["ext"] for v in seen_values.values())
+
+    # Apply resolved extractions
+    for ext in resolved:
         field = ext.get("field")
         raw_value = ext.get("raw_value") or ext.get("value")
         seg_idx = ext.get("segment_index")
@@ -276,19 +305,20 @@ def _aggregate_segment_extractions(
         except (ValueError, TypeError):
             continue
 
-        # Determine time unit: prefer LLM's, fall back to regex from segment text
         seg_text = segments[seg_idx] if seg_idx < len(segments) else ""
         time_unit = ext.get("time_unit", "") or extract_time_unit(seg_text, raw_value)
+
+        if field == "extra_income" and not time_unit:
+            time_unit = "monthly"
+
+        if field == "monthly_expenses" and not time_unit:
+            time_unit = "monthly"
+
         value = normalize_value(raw_value, time_unit)
 
         if seg_idx not in seg_map:
             seg_map[seg_idx] = []
         seg_map[seg_idx].append({"field": field, "raw_value": raw_value, "time_unit": time_unit, "value": value})
-
-        # STRICT RULE: extra_income requires a time period (recurring).
-        # Without a time unit, it is one-time → must be current_savings.
-        if field == "extra_income" and not time_unit:
-            field = "current_savings"
 
         if field == "goal_price":
             goals.append({"name": "primary goal", "goal_price": value})

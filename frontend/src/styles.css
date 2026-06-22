@@ -29,30 +29,45 @@ textarea {
 .app {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 304px 1fr;
+  grid-template-columns: 1fr;
   background: var(--bg);
 }
 
-.sidebar {
+.historyOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  display: flex;
+}
+
+.historyPanel {
+  width: 260px;
   background: var(--bg-2);
   border-right: 1px solid rgba(165, 130, 177, 0.22);
-  padding: 18px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+  height: 100%;
 }
 
-.sidebarHeader {
+.historyTopBar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0;
 }
 
-.brandMark,
-.iconButton,
-.sendButton {
-  width: 40px;
-  height: 40px;
+.historyTopSep {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(165, 130, 177, 0.25);
+  margin: 0 8px;
+}
+
+.historyCloseBtn {
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -60,38 +75,35 @@ textarea {
   background: var(--primary);
   color: var(--text);
   border-radius: 8px;
-  box-shadow: 0 0 18px rgba(165, 130, 177, 0.24);
-}
-
-.iconButton,
-.sendButton,
-.newChat,
-.historyItem {
   cursor: pointer;
-}
-
-.sidebar h1 {
-  font-size: 15px;
-  line-height: 1.2;
-  margin: 0;
-}
-
-.sidebar span,
-.empty {
-  color: var(--accent);
-  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .newChat {
-  height: 42px;
+  height: 36px;
   border: 1px solid rgba(165, 130, 177, 0.28);
   background: var(--primary);
   color: var(--text);
   border-radius: 8px;
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 0 12px;
+  gap: 8px;
+  padding: 0 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.hamburger {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .historyList {
@@ -99,6 +111,7 @@ textarea {
   flex-direction: column;
   gap: 8px;
   overflow: auto;
+  flex: 1;
 }
 
 .historyItem {
@@ -112,6 +125,8 @@ textarea {
   gap: 9px;
   padding: 9px 10px;
   text-align: left;
+  width: 100%;
+  cursor: pointer;
 }
 
 .historyItem span {
@@ -119,6 +134,24 @@ textarea {
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--text);
+}
+
+.empty {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.sendButton {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(165, 130, 177, 0.32);
+  background: var(--primary);
+  color: var(--text);
+  border-radius: 8px;
+  box-shadow: 0 0 18px rgba(165, 130, 177, 0.24);
 }
 
 .main {
@@ -133,6 +166,7 @@ textarea {
   display: flex;
   align-items: center;
   padding: 0 24px;
+  gap: 16px;
   border-bottom: 1px solid rgba(165, 130, 177, 0.16);
 }
 
@@ -280,32 +314,7 @@ textarea {
   cursor: not-allowed;
 }
 
-.mobileOnly {
-  display: none;
-}
-
 @media (max-width: 860px) {
-  .app {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    position: fixed;
-    inset: 0 auto 0 0;
-    width: min(86vw, 330px);
-    z-index: 10;
-    transform: translateX(-100%);
-    transition: transform 180ms ease;
-  }
-
-  .sidebar.open {
-    transform: translateX(0);
-  }
-
-  .mobileOnly {
-    display: inline-flex;
-  }
-
   .topbar {
     gap: 12px;
     padding: 0 14px;

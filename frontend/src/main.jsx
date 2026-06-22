@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Clock, Goal, Menu, Send, Sparkles, Wallet, X } from 'lucide-react';
+import { Clock, Goal, Menu, Send, Wallet, X } from 'lucide-react';
 import './styles.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
@@ -27,8 +27,8 @@ function App() {
   ]);
   const [input, setInput] = useState('');
   const [history, setHistory] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const bottomRef = useRef(null);
   const abortRef = useRef(null);
 
@@ -109,15 +109,12 @@ function App() {
 
   const groupedHistory = useMemo(() => {
     const map = new Map();
-
     for (const item of history) {
       if (!item || !item.conversation_id) continue;
-
       const key = item.conversation_id;
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(item);
     }
-
     return [...map.entries()]
       .map(([id, items]) => ({ id, items }))
       .sort((a, b) => {
@@ -129,57 +126,51 @@ function App() {
 
   return (
     <div className="app">
-      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
-        <div className="sidebarHeader">
-          <div className="brandMark"><Sparkles size={18} /></div>
-          <div>
-            <h1>Financial Chat Assistant</h1>
-            <span>Goal timeline history</span>
-          </div>
-          <button className="iconButton mobileOnly" onClick={() => setSidebarOpen(false)} aria-label="Close history">
-            <X size={18} />
-          </button>
+      {historyOpen && (
+        <div className="historyOverlay" onClick={() => setHistoryOpen(false)}>
+          <aside className="historyPanel" onClick={(e) => e.stopPropagation()}>
+            <div className="historyTopBar">
+              <button
+                className="newChat"
+                onClick={() => {
+                  setConversationId(null);
+                  setMessages([{ id: 'welcome-new', role: 'assistant', content: 'Start a new financial goal analysis whenever you are ready.' }]);
+                  setHistoryOpen(false);
+                }}
+              >
+                <Goal size={17} /> New goal
+              </button>
+              <div className="historyTopSep" />
+              <button className="historyCloseBtn" onClick={() => setHistoryOpen(false)} aria-label="Close">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="historyList">
+              {groupedHistory.length === 0 && <p className="empty">.</p>}
+              {groupedHistory.map((group) => (
+                <button
+                  key={group.id}
+                  className="historyItem"
+                  onClick={() => {
+                    const rebuilt = group.items
+                      .flatMap((item) => [item.user_message, item.assistant_message])
+                      .filter(Boolean);
+                    setConversationId(group.id);
+                    if (rebuilt.length) setMessages(rebuilt);
+                    setHistoryOpen(false);
+                  }}
+                >
+                  <Clock size={15} />
+                  <span>{group.items[0]?.user_message?.content || ''}</span>
+                </button>
+              ))}
+            </div>
+          </aside>
         </div>
-        <button
-          className="newChat"
-          onClick={() => {
-            setConversationId(null);
-            setMessages([{ id: 'welcome-new', role: 'assistant', content: 'Start a new financial goal analysis whenever you are ready.' }]);
-            setSidebarOpen(false);
-          }}
-        >
-          <Goal size={17} /> New goal
-        </button>
-        <div className="historyList">
-          {groupedHistory.length === 0 && <p className="empty">No saved conversations yet.</p>}
-          {groupedHistory.map((group) => (
-            <button
-              key={group.id}
-              className="historyItem"
-              onClick={() => {
-                const rebuilt = group.items
-                  .flatMap((item) => [item.user_message, item.assistant_message])
-                  .filter(Boolean);
-
-                setConversationId(group.id);
-
-                if (rebuilt.length) {
-                  setMessages(rebuilt);
-                }
-
-                setSidebarOpen(false);
-              }}
-            >
-              <Clock size={15} />
-              <span>{group.items[0]?.user_message?.content || 'Saved analysis'}</span>
-            </button>
-          ))}
-        </div>
-      </aside>
-
+      )}
       <main className="main">
         <header className="topbar">
-          <button className="iconButton mobileOnly" onClick={() => setSidebarOpen(true)} aria-label="Open history">
+          <button className="hamburger" onClick={() => setHistoryOpen(true)} aria-label="Open history">
             <Menu size={20} />
           </button>
           <div className="statusPill"><Wallet size={16} /> Smart financial analysis</div>
