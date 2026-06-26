@@ -1,96 +1,59 @@
-# Storage System
+# Storage
 
-The system uses two storage layers: local JSON (always synchronous) and remote Mujarrad API (background, best-effort).
-
----
+Two layers: local JSON (always works) + remote API (best-effort, background).
 
 ## Local Storage
 
-**Path:** `~/.mujarrad-chat/history.json`
+**Path:** `~/.mujarrad-chat/history.json` (falls back to system temp if unwritable)
 
-Created automatically on first `save_chat_record()`. Falls back to the system temp directory if `~` is unwritable.
+**Format:** JSON array of `ChatRecord` objects.
 
-**Format:** JSON array of serialized `ChatRecord` dicts.
+Created automatically on first save. Always reads the entire file, appends, and writes the entire file.
 
-**Operations:**
-- `save_chat_record()`: Append record → write full array
-- `get_history()`: Read & filter by `user_id`
-- **No partial updates** — always reads entire file, appends, writes entire file
+## Remote Storage
 
----
+Runs as an `asyncio.create_task` after the response is sent — never blocks the user.
 
-## Mujarrad Remote Storage (Background)
+Two API spaces:
 
-Storage operations run as an `asyncio.create_task` fired after the response is constructed. The response returns immediately without waiting for storage.
+### Chat History Space
+- **Slug:** `chat`
+- **Endpoint:** `POST {base}/spaces/chat/nodes`
+- **Payload:** `{ title: "chat-{id}", nodeType: "REGULAR", nodeDetails: ChatRecord }`
 
-Two separate "spaces" (equivalent to collections or tables):
-
-### 1. Chat History Space (`chat` slug)
-
-| Field | Value |
-|-------|-------|
-| API | `POST {base}/spaces/chat/nodes` |
-| Title | `chat-{record.id}` |
-| nodeType | `REGULAR` |
-| nodeDetails | Full ChatRecord dict |
-
-**Used for:** History sidebar in frontend, persistent conversation recall.
-
-### 2. Segment Nodes Space (`example` slug)
-
-| Field | Value |
-|-------|-------|
-| API | `POST {base}/spaces/example/nodes` |
-| Title | `seg-{conversation_id}-{segment_index}` |
-| nodeType | `REGULAR` |
-| nodeDetails | `{id, user_id, conversation_id, segment_index, text, classifications}` |
-
-**Used for:** Per-sentence financial data analysis and auditing.
-
-**Saved twice per message:**
-1. **RAW** — segment text without classifications
-2. **CLASSIFIED** — segment text + financial field classifications
-
-Both saves happen in a single background task (`_store_async`) after the LLM and calculator complete.
+### Segment Nodes Space
+- **Slug:** `example`
+- **Endpoint:** `POST {base}/spaces/example/nodes`
+- **Purpose:** Per-turn financial data for auditing (legacy, not used by the guided `/chat`)
 
 ### API Authentication
-
 | Header | Value |
 |--------|-------|
-| `X-API-Key` | `pk_live_...` (public key from .env) |
-| `X-API-Secret` | `sk_live_...` (secret key from .env) |
-
----
+| `X-API-Key` | Public key from `.env` |
+| `X-API-Secret` | Secret key from `.env` |
 
 ## Storage Flow
 
 ```
-save_chat_record(record)  [called from _store_async background task]
-  ├── 1. Local: append to history.json (ALWAYS works)
-  └── 2. Remote: async POST to Mujarrad /spaces/chat/nodes (best-effort)
-       └── On failure: log "skipped", no retry
-
-_store_async(record, segments, extracted, conversation_id)
-  ├── 1. Save all raw segments → asyncio.gather (parallel)
-  ├── 2. Update classified segments → asyncio.gather (parallel)
-  └── 3. save_chat_record() → local + remote
+save_chat_record(record)
+  ├── Local: append to history.json (always works)
+  └── Remote: POST to API (best-effort, failures logged)
 
 get_history(user_id)
-  ├── 1. Local: read & filter history.json
-  ├── 2. Remote: GET /spaces/chat/nodes?page=N&size=50 (paginated)
-  │    ├── On success: save remote data to local, return remote data
-  │    └── On failure: return local data
-  └── 3. Return
+  ├── Read local history.json
+  ├── GET remote API (paginated, size=50)
+  │   ├── Success → replace local with remote data, return remote
+  │   └── Failure → return local data
+  └── Return result
 ```
 
-## Configuration
+## Configuration (`.env`)
 
-Set in `.env`:
 ```
-MUJARRAD_PUBLIC_KEY=pk_live_...
-MUJARRAD_SECRET_KEY=sk_live_...
+MUJARRAD_PUBLIC_KEY=...
+MUJARRAD_SECRET_KEY=...
 MUJARRAD_SPACE_URL=https://www.mujarrad.com/spaces/chat
 MUJARRAD_SEGMENTS_SPACE_URL=https://www.mujarrad.com/spaces/example
 ```
 
-Space slugs are extracted from the last path segment of their URLs.
+Space slugs are extracted from the last path segment of each URL.

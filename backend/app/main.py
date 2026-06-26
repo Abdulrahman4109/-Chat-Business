@@ -4,8 +4,11 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
+from pydantic import BaseModel, Field
+
 from .calculator import calculate_goal
 from .config import get_settings
+from .diagram_generator import generate_financial_roadmap
 from .models import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -15,15 +18,50 @@ from .models import (
     ChatRecord,
     ChatRequest,
     ChatResponse,
+    DiagramRequest,
+    FinancialData,
 )
 from .nlp import extract_numbers
+from .system_builder.models import SystemBuilderState
+from .system_builder.pipeline import SystemBuilderPipeline
+from .financial_agent.models import FinancialAgentState
+from .financial_agent.pipeline import FinancialAgentPipeline
+
+
+class DiagramSaveRequest(BaseModel):
+    conversation_id: str
+    user_id: str = "default-user"
+    xml: str
+
+
+class SystemBuilderChatRequest(BaseModel):
+    session_id: str | None = None
+    message: str
+
+
+class SystemBuilderChatResponse(BaseModel):
+    session_id: str
+    understanding: dict
+    latest_question: str
+    is_complete: bool
+    diagram_xml: str | None = None
+    docs_markdown: str | None = None
+    roi: dict | None = None
+    messages: list[dict[str, str]] = Field(default_factory=list)
+
+
 from .openai_service import OpenAIExtractionService
-from .segmenter import segment_text
 from .storage import MujarradStorage
 
 
 app = FastAPI(title="Financial Chat Assistant", version="1.0.0")
 settings = get_settings()
+
+sessions: dict[str, SystemBuilderState] = {}
+sb_pipeline = SystemBuilderPipeline()
+
+guided_sessions: dict[str, FinancialAgentState] = {}
+guided_pipeline = FinancialAgentPipeline()
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,6 +75,66 @@ app.add_middleware(
 @app.options("/{path:path}")
 async def options_handler():
     return Response(status_code=200)
+
+@app.post("/system-builder/chat", response_model=SystemBuilderChatResponse)
+async def system_builder_chat(request: SystemBuilderChatRequest) -> SystemBuilderChatResponse:
+    session_id = request.session_id or str(uuid4())
+    if session_id not in sessions:
+        sessions[session_id] = SystemBuilderState(session_id=session_id)
+
+    state = sessions[session_id]
+    state = await sb_pipeline.run_orchestrator(state, request.message)
+    sessions[session_id] = state
+
+    return SystemBuilderChatResponse(
+        session_id=session_id,
+        understanding=state.understanding.model_dump(),
+        latest_question=state.latest_question,
+        is_complete=state.is_complete,
+        diagram_xml=state.diagram_xml,
+        docs_markdown=state.docs_markdown,
+        roi=state.roi.model_dump() if state.roi else None,
+        messages=state.messages,
+    )
+
+
+@app.get("/system-builder/session/{session_id}")
+async def system_builder_session(session_id: str) -> SystemBuilderChatResponse | dict:
+    state = sessions.get(session_id)
+    if not state:
+        return {"error": "Session not found"}
+    return SystemBuilderChatResponse(
+        session_id=session_id,
+        understanding=state.understanding.model_dump(),
+        latest_question=state.latest_question,
+        is_complete=state.is_complete,
+        diagram_xml=state.diagram_xml,
+        docs_markdown=state.docs_markdown,
+        roi=state.roi.model_dump() if state.roi else None,
+        messages=state.messages,
+    )
+
+
+@app.get("/system-builder/history")
+async def system_builder_history() -> list[dict]:
+    result = []
+    for sid, state in sessions.items():
+        first_msg = ""
+        for m in state.messages:
+            if m.get("role") == "user":
+                first_msg = m["content"]
+                break
+        result.append({
+            "session_id": sid,
+            "goal": state.understanding.goal or first_msg[:80],
+            "first_message": first_msg[:120] if first_msg else "",
+            "is_complete": state.is_complete,
+            "has_roi": state.roi is not None,
+            "created_at": getattr(state, "created_at", ""),
+        })
+    result.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return result
+
 
 @app.get("/health")
 async def health() -> dict[str, str]:
@@ -62,67 +160,70 @@ async def calculate(request: CalculateRequest) -> CalculationResult:
 async def chat(request: ChatRequest) -> ChatResponse:
     conversation_id = request.conversation_id or str(uuid4())
 
-    token_numbers = extract_numbers(request.message)
-    service = OpenAIExtractionService()
+    if conversation_id not in guided_sessions:
+        guided_sessions[conversation_id] = FinancialAgentState(session_id=conversation_id)
 
-    try:
-        # 1) LLM segmentation + extraction
-        segments = await service.segment_with_llm(request.message)
-        extracted = await service.extract(request.message, token_numbers, segments)
-        calculation = calculate_goal(extracted)
+    state = guided_sessions[conversation_id]
+    state = await guided_pipeline.run_orchestrator(state, request.message)
+    guided_sessions[conversation_id] = state
 
-        assistant_text = build_assistant_response(calculation, extracted)
+    extracted_data = FinancialData(
+        goal_price=state.goal,
+        monthly_income=state.monthly_income,
+        monthly_expenses=state.monthly_expenses,
+        current_savings=state.current_savings,
+        current_debts=state.current_debts,
+        extra_income=state.extra_income,
+    )
 
-        user_message = ChatMessage(role="user", content=request.message)
+    if state.is_complete and state.result:
+        calc = CalculationResult(**state.result)
+        assistant_text = build_assistant_response(calc, extracted_data)
         assistant_message = ChatMessage(
             role="assistant",
             content=assistant_text,
-            extracted_data=extracted,
-            calculation=calculation,
+            extracted_data=extracted_data,
+            calculation=calc,
         )
 
         record = ChatRecord(
             user_id=request.user_id,
             conversation_id=conversation_id,
-            user_message=user_message,
+            user_message=ChatMessage(role="user", content=request.message),
             assistant_message=assistant_message,
-            extracted_data=extracted,
-            calculation=calculation,
+            extracted_data=extracted_data,
+            calculation=calc,
         )
-
-        # 2) Background storage — does not slow response
-        asyncio.create_task(_store_async(record, segments, extracted, conversation_id))
+        asyncio.create_task(_store_chat_record_async(record))
 
         return ChatResponse(
             conversation_id=conversation_id,
             assistant_message=assistant_message,
-            extracted_data=extracted,
-            calculation=calculation,
+            extracted_data=extracted_data,
+            calculation=calc,
+            is_complete=True,
         )
 
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Chat processing failed: {exc}") from exc
+    last_msg = state.messages[-1] if state.messages else {"content": ""}
+    assistant_message = ChatMessage(
+        role="assistant",
+        content=last_msg.get("content", ""),
+        extracted_data=extracted_data,
+    )
+
+    return ChatResponse(
+        conversation_id=conversation_id,
+        assistant_message=assistant_message,
+        extracted_data=extracted_data,
+        question_type=state.question_type,
+        question_field=state.question_field,
+        is_complete=False,
+    )
 
 
-async def _store_async(record: ChatRecord, segments: list[str], extracted, conversation_id: str) -> None:
+async def _store_chat_record_async(record: ChatRecord) -> None:
     try:
         storage = MujarradStorage()
-        raw_segments = [{"text": s, "classifications": []} for s in segments]
-        await asyncio.gather(*[
-            storage.save_segment_node(raw, conversation_id, record.user_id, idx)
-            for idx, raw in enumerate(raw_segments)
-        ])
-
-        update_tasks = [
-            storage.update_segment_node(seg, conversation_id, record.user_id, idx)
-            for idx, seg in enumerate(extracted.segments)
-            if seg.get("classifications")
-        ]
-        if update_tasks:
-            await asyncio.gather(*update_tasks)
-
         await storage.save_chat_record(record)
     except Exception as e:
         print("Background storage error:", e)
@@ -144,6 +245,52 @@ async def history(
     except Exception as e:
         print("History error:", e)
         return []
+
+
+@app.post("/diagram")
+async def diagram(request: DiagramRequest) -> dict[str, str]:
+    xml = generate_financial_roadmap(request.data, request.calculation)
+    return {"xml": xml}
+
+
+@app.post("/diagram/save")
+async def diagram_save(request: DiagramSaveRequest) -> dict[str, bool]:
+    try:
+        storage = MujarradStorage()
+        await storage.save_diagram_node(request.conversation_id, request.user_id, request.xml)
+        return {"success": True}
+    except Exception as e:
+        print("Diagram save error:", e)
+        return {"success": False}
+
+
+@app.get("/diagram/load")
+async def diagram_load(
+    conversation_id: str = Query(min_length=1),
+    user_id: str = Query(default="default-user"),
+) -> dict:
+    try:
+        storage = MujarradStorage()
+        xml = await storage.get_diagram_node(conversation_id, user_id)
+        return {"xml": xml}
+    except Exception as e:
+        print("Diagram load error:", e)
+        return {"xml": None}
+
+
+@app.post("/system-builder/roi/save")
+async def system_builder_roi_save(request: SystemBuilderChatRequest) -> dict[str, bool]:
+    if not request.session_id or request.session_id not in sessions:
+        return {"success": False}
+    try:
+        state = sessions[request.session_id]
+        storage = MujarradStorage()
+        roi_data = state.roi.model_dump() if state.roi else {}
+        await storage.save_roi_node(request.session_id, roi_data)
+        return {"success": True}
+    except Exception as e:
+        print("ROI save error:", e)
+        return {"success": False}
 
 
 @app.get("/mujarrad/status")

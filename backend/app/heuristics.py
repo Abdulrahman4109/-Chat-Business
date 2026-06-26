@@ -14,7 +14,10 @@ class NumberMention:
 
 
 def normalize_text(text: str) -> str:
-    return text.translate(ARABIC_DIGITS)
+    result = text.translate(ARABIC_DIGITS)
+    result = re.sub(r"(?<=[\u0600-\u06FF])(?=\d)", " ", result)
+    result = re.sub(r"(?<=\d)(?=[\u0600-\u06FF])", " ", result)
+    return result
 
 
 def extract_number_mentions(text: str) -> list[NumberMention]:

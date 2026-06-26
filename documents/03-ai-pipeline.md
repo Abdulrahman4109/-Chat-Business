@@ -1,127 +1,58 @@
 # AI Pipeline
 
-The extraction pipeline has 5 stages: number extraction → segmentation → LLM extraction (with aggregation) → calculation → background storage.
+The data processing pipeline converts raw user text into structured financial data and a goal timeline.
+
+## Stage 1: Text Normalization
+
+All user messages pass through `heuristics.normalize_text()` before LLM processing:
+
+1. **Digit conversion**: Non-Western digit systems (Arabic-Indic, Persian, etc.) → 0-9
+2. **Text/digit separation**: Inserts spaces between non-Latin script characters and adjacent digits — e.g., text with attached numbers like `text123text456` becomes `text 123 text 456`
+3. **No modification to**: `k`/`m` suffixes, thousands separators, decimal points, currency symbols
+
+This normalization happens at both ends: before sending to the LLM and when parsing LLM responses.
 
 ---
 
-## Stage 1: Number Extraction (`nlp.py`)
+## Stage 2: Guided Extraction (Financial Agent)
 
-**Purpose:** Find all numeric values in text before LLM processing.
+The `FinancialAgentPipeline` manages a conversation state machine:
 
-**Method:** Two-pass:
-1. Regex pattern matching: `(?:[$€£])?\s*\d+(?:,\d{3})*(?:\.\d+)?[kKmM]?`
-2. spaCy `like_num` token detection (if spaCy model is loaded)
+### Initial Extraction
+Sends the user's message to the LLM with a prompt that defines fields by meaning:
+- **goal**: target amount (price, target, goal, purchase)
+- **monthly_income**: main salary or income
+- **monthly_expenses**: regular spending
+- **current_savings**: assets already owned
+- **current_debts**: amounts owed
+- **extra_income**: additional income (bonuses, commissions, side gigs)
 
-**Output:** `list[float]` — deduplicated list of all numbers found.
+### Time Unit Normalization
+The LLM normalizes time values to monthly equivalents:
+- If a time unit is mentioned (weekly, daily, yearly) → convert to monthly (weekly ×4.2857, daily ×30, yearly ÷12)
+- If no time unit — assume already monthly
 
----
+### Completeness Check
+After extraction, each field is checked. Required: goal, income, expenses. Optional: savings, debts, extra income. All fields must be non-null before completion.
 
-## Stage 2: Text Segmentation (`segmenter.py` + LLM #1)
+### Follow-up Questions
+When fields are missing, the system asks a yes/no question in order:
+1. Expenses → 2. Savings → 3. Debts → 4. Extra Income
 
-**Purpose:** Split user message into atomic "thought units" for independent analysis.
+The user answers with "Yes, {amount}" or "No". The LLM extracts the value and normalizes time units.
 
-### Method: Two-tier
-
-#### Tier 1: LLM #1 — `segment_with_llm()`
-- Calls GPT-4o-mini with `SEGMENTER_PROMPT` → `{"segments": [...]}`
-- Temperature=0, timeout=10s
-- Understands Arabic context: knows that و joins separate thoughts
-
-#### Tier 2: Fallback — Regex `segment_text()`
-Used when LLM is unavailable or fails.
-
-### Regex Split Rules
-- English sentence boundaries: `. ` `! ` `? ` (period + space)
-- Arabic sentence boundaries: `؟ ` (Arabic question mark + space)
-- Newlines: `\n`
-- **Arabic attached-number boundaries**: Insert a break before Arabic connectors (`و`, `ف`, `ب`, `ل`) when preceded by a digit
-  - `800000ولدي` → `800000. ولدي` (then splits at `. `)
-  - `ادخار20000مرتب50000` → `ادخار20000. مرتب50000`
-  - NO splitting inside words: `اسبوعي` stays as `اسبوعي` (not `اسب. وعي`)
-- Uses `(\d+)` (full number, not single digit) to prevent number corruption
-
-### Max Segments
-- Hard limit: **15 segments**
-- Beyond 15: truncated, excess merged into last segment
-
-### Rationale
-Earlier experiments used only regex, but Arabic text often lacks clear delimiters. The LLM understands that "دخلي 50000 ومصروفي 10000" are two separate facts joined by و. The regex handles attached numbers while the LLM handles semantic splitting.
+### Answer Extraction
+- "No" / negation → value = 0
+- "Yes, {number}" with no time unit → value = {number} (assumed monthly)
+- "Yes, {number} weekly/daily/yearly" → normalized to monthly
 
 ---
 
-## Stage 3: LLM Extraction (`openai_service.py`)
+## Stage 3: Calculation
 
-**Purpose:** Classify each number into the correct financial field using GPT, with time unit normalization.
-
-### Time Unit Normalization Pipeline
-
-The system normalizes ANY time unit to monthly equivalents:
-
-#### Dictionary Lookup (`extract_time_unit`)
-- Strips trailing punctuation before matching
-- Two patterns: NUMBER + time unit and TIME unit + NUMBER, both allow 1 word between
-- Matches time phrases against `TIME_UNITS` dict with word-boundary regex:
-- `hourly`, `per hour`, `بالساعة`, `كل ساعة` → ×171.43
-- `daily`, `per day`, `يومياً`, `في اليوم`, `يومي`, `كل يوم` → ×30
-- `weekly`, `per week`, `اسبوعياً`, `في الاسبوع`, `كل اسبوع`, `أسبوعي` → ×4.2857
-- `biweekly`, `bi-weekly`, `كل اسبوعين`, `كل أسبوعين` → ×2.1429
-- `every 10 days`, `كل 10 ايام`, `عشرة ايام` → ×3
-- `monthly`, `per month`, `شهرياً`, `في الشهر`, `كل شهر` → ×1
-- `semi-monthly`, `semi-monthly`, `نصف شهري`, `مرتين بالشهر` → ×2
-- `quarterly`, `كل 3 شهور`, `ربع سنوي` → ×1/3
-- `semi-annually`, `كل 6 شهور`, `نصف سنوي` → ×1/6
-- `yearly`, `per year`, `سنوياً`, `في السنة`, `كل سنة`, `سنوي`, `كل عام` → ×1/12
-- `biennially`, `كل سنتين`, `سنتين`, `كل عامين` → ×1/24
-- 25+ Arabic variants including all hamza forms (أسبوع, الأسبوع)
-
-#### General Pattern Matching (`_TIME_GENERAL_PATTERNS`)
-For patterns like `كل 2 شهر` or `every 3 months`:
-- Extracts the count (e.g. 2, 3)
-- Computes multiplier = 1 / count (e.g. `كل 2 شهر` → multiplier 0.5)
-- Returns computed value as `__MULT_<float>__` string
-
-#### Value Normalization (`normalize_value`)
-1. Parses time unit from text
-2. If known unit → multiply by stored multiplier
-3. If `__MULT_<float>__` → parse and multiply
-4. If no unit → keep as-is (assumed monthly)
-
-### EXTRACTION_PROMPT
-
-See `EXTRACTION_PROMPT` in `openai_service.py`. Key design:
-- Fields defined by **meaning** not keywords
-- LLM decides time_unit by context: same word can be TYPE (شهري in "مرتب شهري" → no unit) or FREQUENCY (شهرياً or "في الشهر" → set unit)
-- "Think about the meaning" — LLM is the primary classifier, no post-hoc override rules
-
-### Fallback (`heuristic_extract`)
-
-If LLM is unavailable (no API key or API error):
-1. `extract_number_mentions()` — regex finds all number mentions
-2. Stores them in `all_numbers` list
-3. **No field classification** (LLM is the sole classifier)
-4. `apply_intelligent_defaults()` — fills None→0 for calculator math
-
----
-
-### Aggregation (inside LLM Extraction — `_aggregate_segment_extractions`)
-
-**Purpose:** Merge per-segment extractions into a single `FinancialData` object.
-
-Rules:
-- Same field across segments → **sum** values (e.g., two extra_income = 4000 + 2000)
-- Multiple `goal_price` values → **take largest** (primary goal)
-- Skip extractions with missing field/value/segment_index
-- Build `segments[]` list with per-segment classifications
-- **Conflict resolution**: only applies to `{monthly_income, current_savings, extra_income}` when same `(value, segment_index)` appears in multiple fields. Lower-priority field is dropped (extra_income > current_savings > monthly_income). Uses `segment_index` in the key so two numbers with the same value in different segments are never conflated.
-
----
-
-## Stage 4: Calculation (`calculator.py`)
-
-After extraction, the calculator computes the timeline:
-
-```python
-net_savings = (income or 0) + (extra or 0) - (expenses or 0)
+Formula:
+```
+net_savings = (income + extra) - expenses
 effective_savings = max((savings or 0) - (debts or 0), 0)
 remaining = max(goal - effective_savings, 0)
 months = ceil(remaining / net_savings)
@@ -129,16 +60,27 @@ months = ceil(remaining / net_savings)
 
 ### Edge Cases
 
-| Case | Behavior |
-|------|----------|
-| No goal | Unachievable, `duration_display: "goal amount not provided"` |
-| Already funded (`remaining == 0`) | Months = 0, "already achieved" |
-| Negative/zero savings | Unachievable, suggests reducing expenses |
-| Achievable | `format_duration(months)` → "5 months", "1 year", "2 years and 3 months" |
-| Debts present | `effective_savings = savings - debts` (debts reduce available capital) |
+| Condition | Result |
+|-----------|--------|
+| No goal amount | Unachievable |
+| Already have enough savings | "Already funded" (months = 0) |
+| Net savings ≤ 0 | Unachievable, suggests expense reduction |
+| Debts present | Debts reduce effective savings (savings - debts) |
+| Goal achievable | Human-readable duration (months/years) |
 
-### Suggestions (max 3)
-1. Always: "Keep at least {net_savings} per month reserved"
-2. If >12 months: "A small income increase or expense reduction can shorten the timeline"
-3. If expenses > 60% of income: "Review fixed costs"
-4. If multiple goals: "Prioritize one goal at a time"
+### Suggestions
+Up to 3 tips returned with every calculation:
+1. Reserve the net savings amount monthly
+2. If timeline > 12 months: small income increase or expense reduction helps
+3. If expenses > 60% of income: review fixed costs
+4. If multiple goals: prioritize one at a time
+
+---
+
+## Stage 4: Background Storage
+
+After the response is sent, storage runs asynchronously:
+1. Save `ChatRecord` (user message + assistant message + data) to local JSON
+2. Save `ChatRecord` to remote API (best-effort, failures logged but ignored)
+
+Storage never blocks the response.

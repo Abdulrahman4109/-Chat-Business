@@ -6,204 +6,284 @@
 |-------|-----------|
 | Backend | Python 3.13, FastAPI, uvicorn (port 8000) |
 | Frontend | React 19, Vite (port 5173, proxy → 8001) |
-| AI | gpt-4o-mini via OpenRouter |
+| AI | gpt-4o-mini via OpenRouter or direct OpenAI |
 | Storage | Local JSON (`~/.mujarrad-chat/history.json`) + Mujarrad API |
-
-## Key API Endpoints (`backend/app/main.py`)
-
-| Route | Method | Input | Output |
-|-------|--------|-------|--------|
-| `/health` | GET | — | `{"status": "ok"}` |
-| `/analyze` | POST | `{message}` | `{data: FinancialData, token_numbers}` |
-| `/calculate` | POST | `{data: FinancialData}` | `CalculationResult` |
-| `/chat` | POST | `{message, user_id, conversation_id?}` | `{conversation_id, assistant_message, extracted_data, calculation}` |
-| `/history` | GET | `?user_id=` | `list[ChatRecord]` |
-| `/mujarrad/status` | GET | — | `{connected, space, segments_space, api}` |
-
-## Pydantic Models (`backend/app/models.py`)
-
-| Model | Key Fields |
-|-------|-----------|
-| `ChatRequest` | `message: str` (1-8000), `user_id: str` (default="default-user"), `conversation_id: str\|None` |
-| `FinancialData` | `goal_price, monthly_income, monthly_expenses, current_savings=None, extra_income=None, current_debts=None, goals: list[dict]=[], all_numbers: list[float]=[], assumptions: list[str]=[]` — all floats non-negative; None means unmentioned (hidden from UI) |
-| `CalculationResult` | `net_monthly_savings, remaining, months, duration_display, is_achievable, suggestions: list[str]` |
-| `ChatMessage` | `id, role, content, created_at, extracted_data?, calculation?` |
-| `ChatRecord` | `id, user_id, conversation_id, user_message, assistant_message, extracted_data, calculation, created_at` |
-| `ChatResponse` | `conversation_id, assistant_message, extracted_data, calculation` |
-
-## Extraction Pipeline (`/chat` flow)
-
-1. **`nlp.extract_numbers(message)`** — regex + spaCy → `list[float]`
-2. **LLM #1 — `segment_with_llm(message)`**:
-   - GPT with `SEGMENTER_PROMPT` → `{"segments": [...]}`
-   - Falls back to `segmenter.segment_text()` regex splitter if unavailable
-3. **LLM #2 — `extract(message, token_numbers, segments)`**:
-   - LLM classifies each number by meaning (not pattern matching) into fields
-   - LLM decides time_unit per field: same word can be TYPE (no unit) or FREQUENCY (set unit) depending on context
-   - No post-LLM validation rules second-guess the LLM (trust, not override)
-   - `extract_time_unit()` fallback: strips punctuation, allows 1 word between time keyword and number
-   - `normalize_value()` converts any time unit → monthly equivalent
-   - 11 time units × Arabic/English variants (25+), computed multipliers (`كل 2 شهر` → `__MULT_0.5__`)
-   - Fallback: `heuristic_extract()` — numbers only, no field classification
-   - `_aggregate_segment_extractions()` merges per-segment results into FinancialData
-     - Same field across segments → summed
-     - Multiple goals → largest wins
-     - Conflict resolution: `(value, segment_index)` key prevents different-segment numbers from colliding
-4. **`calculator.calculate_goal(data)`**:
-   - `net_savings = income + extra - expenses`
-   - `effective_savings = max(savings - debts, 0)`
-   - `months = ceil(max(goal - effective_savings, 0) / net_savings)`
-5. **`_store_async()`** (background, after response):
-   - Save raw segments (parallel asyncio.gather)
-   - Update classified segments (parallel asyncio.gather)
-   - Save chat record → local JSON + Mujarrad POST
-
-## Heuristics (`backend/app/heuristics.py`)
-
-Pure number-extraction fallback — no keyword classification:
-- `normalize_text()` — Arabic-Indic digits (٠-٩, ۰-۹) → Western digits
-- `extract_number_mentions()` — regex pattern for all number formats
-- `heuristic_extract()` — extracts numbers to `all_numbers` only (LLM is sole classifier)
-- `apply_intelligent_defaults()` — None→0 for calculator, builds `goals` list
-
-## Calculator (`backend/app/calculator.py`)
-
-- `calculate_goal(data)` → `CalculationResult`
-- No goal → unachievable; remaining=0 → "already funded"; net_savings≤0 → unachievable
-- `effective_savings = max((savings or 0) - (debts or 0), 0)` — debts reduce available capital
-- `format_duration(months)` → "5 months" / "1 year" / "2 years and 3 months"
-- `build_suggestions()` → max 3: reserve suggestion, >12mo optimization, >60% expense review, multi-goal prioritization
-
-## NLP (`backend/app/nlp.py`)
-
-- `extract_numbers(text)` — two-pass: regex patterns + spaCy `like_num`, deduplicated
-- spaCy model `en_core_web_sm` loaded lazily (optional, not in requirements.txt)
-
-## Config (`backend/app/config.py`)
-
-| Field | Default | Notes |
-|-------|---------|-------|
-| `openai_api_key` | `""` | OpenRouter (`sk-or-v1-...`) or OpenAI (`sk-...`) |
-| `openai_base_url` | `https://openrouter.ai/api/v1` | Empty string = direct OpenAI |
-| `openai_model` | `gpt-4o-mini` | Shared for both LLM calls |
-| `mujarrad_public_key` | `""` | Mujarrad API public key |
-| `mujarrad_secret_key` | `""` | Mujarrad API secret key |
-| `mujarrad_api_base` | `https://www.mujarrad.com/api` | Mujarrad API base URL |
-| `mujarrad_space_url` | `https://.../spaces/chat` | Chat records space |
-| `mujarrad_segments_space_url` | `https://.../spaces/example` | Segment nodes space |
-| `cors_origins` | `localhost:5173,...` | Comma-separated allowed origins |
-
-Properties: `cors_origin_list` (splits by comma), `mujarrad_space_slug` / `mujarrad_segments_space_slug` (extracted from URL last segment).
-
-## Storage (`backend/app/storage.py`)
-
-- `MujarradStorage` — reads settings, builds auth headers (`X-API-Key`, `X-API-Secret`)
-- Two space slugs: `slug` (chat history → `chat`), `segments_slug` (financial nodes → `example`)
-- `_load_local()` / `_save_local()` — `~/.mujarrad-chat/history.json`
-- `save_chat_record()` — local + async POST to `chat` space
-- `save_segment_node()` / `update_segment_node()` — async POST to `example` space (best-effort, never raises)
-- `get_history()` — local first, then Mujarrad GET (paginated, size=50), merge remote→local on success, fallback to local
-- `check_connection()` — health check via GET `{base}/spaces/{slug}/nodes?size=1`
-
-## Frontend (`frontend/src/main.jsx`)
-
-- **Components**: `App` (root), `Message` (bubble + grid + result), `Metric` (label+value, null for None fields)
-- **State**: `userId` (localStorage), `conversationId`, `messages[]`, `input`, `history[]`, `loading`, `sidebarOpen`, `abortRef`
-- **Cancel**: `AbortController` in `sendMessage()`, button appears during loading — aborts cleanly without error message
-- **Metric**: returns `null` for `null`/`undefined` — unmentioned fields invisible
-- **Analysis grid**: Net Savings row conditional on `current_debts`
-- **History**: grouped by `conversation_id`, most-recent-first, sidebar shows first user message
-- **Styling**: Dark CSS variables (`--bg: #02000F`, `--primary: #541288`, `--accent: #A582B1`), responsive at 860px
-- **API base**: `VITE_API_BASE_URL || ''` (Vite proxy → `localhost:8001`)
-
-## Mujarrad API
-
-| Detail | Value |
-|--------|-------|
-| Chat space slug | `chat` |
-| Segments space slug | `example` |
-| Auth | `X-API-Key` + `X-API-Secret` |
-| Endpoints | `POST/GET /api/spaces/{slug}/nodes` |
-| Chat payload | `{title: "chat-{id}", nodeType: "REGULAR", nodeDetails: <ChatRecord>}` |
-| Segment payload | `{title: "seg-{conv}-{idx}", nodeType: "SEGMENT", nodeDetails: {...}}` |
-| Web UI | `https://www.mujarrad.com/spaces/chat` / `https://www.mujarrad.com/spaces/example` |
 
 ## Project Structure
 
 ```
 chat/
-├── CLAUDE.md
-├── ARCHITECTURE.md
-├── README.md
-├── .gitignore
-│
 ├── backend/
 │   ├── .env
 │   ├── requirements.txt
 │   ├── app/
-│   │   ├── main.py
-│   │   ├── models.py
-│   │   ├── config.py
-│   │   ├── openai_service.py
-│   │   ├── heuristics.py
-│   │   ├── calculator.py
-│   │   ├── nlp.py
-│   │   ├── segmenter.py
-│   │   ├── storage.py
-│   │   └── schema.json
-│   ├── scripts/
-│   │   ├── generate_training_data.py
-│   │   ├── finetune_data.jsonl
-│   │   └── HOW_TO_FINETUNE.md
-│   └── tests/                 ← 85 tests
-│
+│   │   ├── main.py                       # All routes
+│   │   ├── models.py                     # Pydantic schemas
+│   │   ├── config.py                     # Environment settings
+│   │   ├── heuristics.py                 # Text normalization & defaults
+│   │   ├── calculator.py                 # Goal timeline math
+│   │   ├── nlp.py                        # Regex + optional spaCy extraction
+│   │   ├── openai_service.py             # Legacy extraction (used by /analyze)
+│   │   ├── segmenter.py                  # Text splitting
+│   │   ├── diagram_generator.py          # Draw.io XML generation
+│   │   ├── storage.py                    # Local + remote persistence
+│   │   ├── financial_agent/              # Guided conversation state machine
+│   │   │   ├── models.py
+│   │   │   ├── pipeline.py
+│   │   │   └── prompts.py
+│   │   └── system_builder/              # Separate system design feature
+│   ├── scripts/                          # Training data generation
+│   └── tests/                            # 96 tests
 ├── frontend/
-│   ├── package.json
-│   ├── vite.config.js
+│   ├── package.json                      # React 19, Vite, lucide-react
 │   ├── index.html
+│   ├── vite.config.js                    # Proxy to 8001
 │   └── src/
-│       ├── main.jsx
-│       └── styles.css
-│
-└── documents/
-    ├── 00-overview.md
-    ├── 01-architecture.md
-    ├── 02-backend-api.md
-    ├── 03-ai-pipeline.md
-    ├── 04-storage.md
-    └── 05-frontend.md
+│       ├── main.jsx                      # App, Message, Metric components
+│       ├── system-builder/               # Separate system builder UI
+│       └── styles.css                    # Dark theme
+└── documents/                            # 8 markdown docs
 ```
 
-## Common Commands
+## Core Endpoints (`main.py`)
 
-### Backend
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/chat` | POST | Conversational extraction → guided questions → calculation |
+| `/analyze` | POST | One-shot LLM extraction (legacy) |
+| `/calculate` | POST | Pure timeline math on existing data |
+| `/diagram` | POST | Generate draw.io roadmap XML |
+| `/diagram/save` | POST | Persist edited diagram |
+| `/diagram/load` | GET | Load saved diagram |
+| `/history` | GET | Past conversations for a user |
+| `/system-builder/chat` | POST | System design conversation |
+| `/system-builder/roi/save` | POST | Save ROI data |
+| `/health` | GET | Liveness check |
+| `/mujarrad/status` | GET | Storage connection status |
+
+## `/chat` Pipeline
+
+1. **Normalize**: `heuristics.normalize_text()` — converts non-Western digits (Arabic-Indic, Persian, etc.) to 0-9; inserts spaces between letters and attached digits
+2. **Process**: LLM extracts all mentioned fields from the message using `PROCESS_INPUT_PROMPT` — normalizes time units to monthly equivalents
+3. **Check completeness**: all fields (goal, income, expenses, savings, debts, extra) must be non-null
+4. **If incomplete**: return `question_type: "yesno"` with field name; user answers Yes/No with optional value
+5. **If complete**: calculate timeline via `calculator.calculate_goal()`
+6. **Store**: background `asyncio.create_task` saves ChatRecord to local JSON + remote API (never blocks response)
+
+### Calculation Formula
+```
+net_savings = (income + extra) - expenses
+effective_savings = max((savings or 0) - (debts or 0), 0)
+remaining = max(goal - effective_savings, 0)
+months = ceil(remaining / net_savings)  if net_savings > 0
+```
+
+### Question Order
+monthly_expenses → current_savings → current_debts → extra_income
+
+Questions are asked in the user's detected language (Arabic detected by Unicode block, otherwise English).
+
+### Response Fields
+| Field | When Present |
+|-------|-------------|
+| `extracted_data` | Always (shows current state) |
+| `calculation` | Only when `is_complete: true` |
+| `question_type` | "yesno" when more info needed |
+| `question_field` | Which field is being asked about |
+| `is_complete` | True only when all fields collected and calculated |
+
+## Key Models
+
+### FinancialData
+All floats nullable. `null` = unmentioned (hidden in UI). `0` = explicitly stated as zero.
+
+| Field | Description |
+|-------|-------------|
+| `goal_price` | Target amount |
+| `monthly_income` | Main salary |
+| `monthly_expenses` | Regular spending |
+| `current_savings` | Existing assets |
+| `current_debts` | Amounts owed |
+| `extra_income` | Bonuses, side gigs, etc. |
+
+### CalculationResult
+| Field | Type | Description |
+|-------|------|-------------|
+| `net_monthly_savings` | float | income + extra - expenses |
+| `remaining` | float | goal - effective savings (min 0) |
+| `months` | int? | Months to goal |
+| `raw_months` | float? | Unrounded value |
+| `duration_display` | string | "3 years and 5 months" |
+| `is_achievable` | bool | Can goal be reached? |
+| `suggestions` | string[] | Up to 3 optimization tips |
+
+### ChatResponse
+| Field | Type | Default | Purpose |
+|-------|------|---------|---------|
+| `conversation_id` | string | — | Groups messages |
+| `assistant_message` | ChatMessage | — | AI response |
+| `extracted_data` | FinancialData? | null | Parsed numbers |
+| `calculation` | CalculationResult? | null | Timeline result |
+| `question_type` | string | "" | "yesno" during follow-up |
+| `question_field` | string | "" | Field being asked |
+| `is_complete` | bool | True | Done collecting data |
+
+## State Management
+
+### Financial Agent (`financial_agent/`)
+Per-conversation state stored in `guided_sessions: dict[str, FinancialAgentState]`.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `session_id` | string | UUID |
+| `goal, monthly_income, monthly_expenses` | float? | Required fields |
+| `current_savings, current_debts, extra_income` | float? | Optional fields |
+| `is_complete` | bool | Starts False |
+| `latest_question` | string | Current question text |
+| `question_type, question_field` | string | Current question metadata |
+| `asked_fields` | list[str] | Avoid re-asking fields |
+| `messages` | list[dict] | Conversation history for LLM context |
+| `result` | dict? | Calculated timeline |
+
+### Session Cleanup
+States are never cleaned (in-memory dictionary). For production, use a database.
+
+### System Builder (`system_builder/`)
+Separate feature for designing financial systems. Has its own state, pipeline, models, and `/system-builder/*` endpoints.
+
+## Text Normalization (`heuristics.py`)
+
+- `normalize_text()`: Converts all non-Western digits to 0-9; inserts space between non-Latin script characters and attached digits
+- `extract_number_mentions()`: Regex for all number formats (decimals, `k`/`m` suffixes, currency prefixes, thousands separators)
+- `heuristic_extract()`: Pure number extraction to `all_numbers` list (no classification — LLM is sole classifier)
+- `apply_intelligent_defaults()`: Converts None→0 for calculator; builds goals list; preserves null for UI
+
+## Prompts
+
+### PROCESS_INPUT_PROMPT
+Extracts all fields from the initial message. Defines each field by meaning with multilingual examples. Time unit normalization rules: weekly×4.2857, daily×30, yearly÷12; no unit = assume monthly.
+
+### UPDATE_DATA_PROMPT
+Extracts value from yes/no answers. Handles negation (sets 0), affirmation with value, time unit normalization.
+
+## Calculator (`calculator.py`)
+
+Edge cases:
+- No goal → unachievable
+- Remaining ≤ 0 → "already funded" (months = 0)
+- Net savings ≤ 0 → unachievable with suggestions to reduce expenses
+- `format_duration(months)`: "5 months", "1 year", "2 years and 3 months"
+- `build_suggestions()`: max 3 from reserve, >12mo optimization, >60% expense review, multi-goal
+
+## Storage (`storage.py`)
+
+| Method | Purpose |
+|--------|---------|
+| `save_chat_record()` | Local JSON + async POST to `chat` space |
+| `save_segment_node()` | Async POST to `example` space (legacy) |
+| `save_diagram_node()` | Async POST to `graph` space |
+| `save_roi_node()` | Async POST to `roi` space |
+| `get_diagram_node()` | GET from `graph` space |
+| `get_roi_node()` | GET from `roi` space |
+| `get_history()` | Local first → remote (paginated, 50/size) → replace local on success |
+| `check_connection()` | Health check via minimal GET |
+
+### Slugs
+| Slug | Space URL suffix | Content |
+|------|-----------------|---------|
+| `chat` | `/spaces/chat` | Chat history |
+| `example` | `/spaces/example` | Segment nodes (legacy) |
+| `graph` | `/spaces/graph` | Diagram XML |
+| `roi` | `/spaces/roi` | ROI calculations |
+
+All remote saves are best-effort (failures logged, never raise). Auth via `X-API-Key` + `X-API-Secret` headers.
+
+## Config (`config.py` — `.env` file)
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `openai_api_key` | "" | `sk-or-v1-...` (OpenRouter) or `sk-...` (OpenAI) |
+| `openai_base_url` | `https://openrouter.ai/api/v1` | Empty = direct OpenAI |
+| `openai_model` | `gpt-4o-mini` | Extraction model |
+| `mujarrad_*_key` | "" | API authentication |
+| `mujarrad_*_space_url` | `https://.../spaces/{slug}` | Per-space URLs |
+| `cors_origins` | `localhost:5173,127.0.0.1:5173` | Comma-separated |
+
+## Frontend (`main.jsx`)
+
+### Components
+- **App**: Root — manages state, chat flow, Yes/No buttons, diagram modal, history sidebar, mode toggle (chat / system-builder)
+- **Message**: Bubble with text + optional analysis grid + optional result panel + optional "View Financial Plan" button
+- **Metric**: Label + formatted value row; returns null for null/undefined
+
+### State
+| Variable | Type | Purpose |
+|----------|------|---------|
+| `mode` | "chat" \| "system-builder" | App mode |
+| `userId` | string | Persistent (localStorage) |
+| `conversationId` | string? | Active conversation |
+| `messages` | array | Current conversation |
+| `history` | array | All past records |
+| `loading` | bool | Fetch in progress |
+| `pendingYesNo` | object? | Current Yes/No prompt |
+| `diagramOpen` | bool | Diagram modal visibility |
+
+### Chat Flow
+1. User types message → POST `/chat`
+2. If response `is_complete: false` with `question_type: "yesno"` → show Yes/No buttons
+3. Yes → inline input for value; No → auto-send "No"
+4. If `is_complete: true` → show result with analysis grid + calculation + diagram button
+
+### Diagram Modal
+- Embedded iframe at `https://embed.diagrams.net`
+- `postMessage` protocol: draw.io sends "init" → frontend replies with "load" + XML
+- Save button in draw.io triggers frontend → POST `/diagram/save`
+- Only accepts messages from `*.diagrams.net`, `*.draw.io`
+
+### Styling
+- CSS variables: `--bg: #02000F`, `--primary: #541288`, `--accent: #A582B1`, `--text: #F5F5F5`
+- Responsive at 860px breakpoint
+- No CSS framework
+
+## Diagram Generator (`diagram_generator.py`)
+
+Produces `mxGraphModel` XML with two rows:
+- Row 1: Income → Expenses → (Extra Income) → Net Savings
+- Row 2: Current Savings → Goal → Still Needed → Timeline/Achievability
+
+Color scheme: income (purple #8E3DFF), expenses (pink #E35CFF), assets (light purple #C9A4FF), result (based on achievability).
+
+## Tests (96)
+
+| File | Tests | Scope |
+|------|-------|-------|
+| `test_calculator.py` | 10 | Math, formatting, suggestions, edge cases |
+| `test_financial_agent.py` | 11 | Normalization, pipeline logic |
+| `test_heuristics.py` | 24 | Number extraction, digit conversion, defaults |
+| `test_models.py` | 10 | Defaults, validation, serialization |
+| `test_nlp.py` | 9 | Numbers, currency, dedup |
+| `test_openai_service.py` | 19 | Fallback, aggregation, time units |
+| `test_segmenter.py` | 13 | Text splits, edge cases |
+
+## Commands
+
 ```powershell
+# Backend
 cd backend
 .venv\Scripts\python -m uvicorn app.main:app --reload --port 8000
 .venv\Scripts\python -m pytest tests -v
-```
 
-### Frontend
-```powershell
+# Frontend
 cd frontend
-npm run dev      # localhost:5173, proxy → localhost:8001
+npm run dev      # localhost:5173, proxy → 8001
 npm run build    # output → dist/
 ```
 
-## Tests (85 total)
-
-| File | Tests | Coverage |
-|------|-------|----------|
-| `tests/test_calculator.py` | 10 | Goal calc, formatting, suggestions, edge cases |
-| `tests/test_heuristics.py` | 24 | Number extraction, Arabic digits, defaults |
-| `tests/test_models.py` | 10 | Defaults, validation, serialization |
-| `tests/test_nlp.py` | 9 | Numbers, currency, Arabic digits, dedup, attachments |
-| `tests/test_openai_service.py` | 19 | Heuristic fallback, aggregation, segments, time units |
-| `tests/test_segmenter.py` | 13 | Empty input, Arabic/English splits, conjunctions, max segments |
-
 ## Notes
 
-- spaCy is optional (not in `requirements.txt`) — regex-only number extraction works without it
-- Frontend dependencies use `"latest"` in `package.json`
-- Vite proxy targets `localhost:8001` (not 8000) in `vite.config.js`
-- Storage tests are missing (`storage.py` and `main.py` have no tests due to async/API complexity)
+- `null` ≠ `0` in FinancialData — null means unmentioned (hidden in UI), 0 means explicitly zero
+- spaCy is optional (`en_core_web_sm` lazy-loaded, not in requirements.txt) — regex works without it
+- Vite proxy targets port 8001 (not 8000)
+- Storage module has no dedicated tests due to async/API complexity
+- System Builder is a separate feature with its own pipeline and endpoints under `/system-builder/*`
+- Documents are in `documents/` directory: 00-overview through 07-diagram

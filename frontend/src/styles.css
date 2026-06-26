@@ -1,10 +1,10 @@
 :root {
-  --bg: #02000F;
-  --bg-2: #210A41;
-  --primary: #541288;
-  --text-muted: #595063;
-  --accent: #A582B1;
-  --text: #f4eff8;
+  --bg: #070511;
+  --bg-2: #12082A;
+  --primary: #8E3DFF;
+  --accent: #B56CFF;
+  --text-muted: #C9A4FF;
+  --text: #F3EEFF;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--text);
   background: var(--bg);
@@ -44,7 +44,7 @@ textarea {
 .historyPanel {
   width: 260px;
   background: var(--bg-2);
-  border-right: 1px solid rgba(165, 130, 177, 0.22);
+  border-right: 1px solid rgba(181, 108, 255, 0.22);
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -61,7 +61,7 @@ textarea {
 .historyTopSep {
   width: 1px;
   align-self: stretch;
-  background: rgba(165, 130, 177, 0.25);
+  background: rgba(181, 108, 255, 0.25);
   margin: 0 8px;
 }
 
@@ -71,7 +71,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(165, 130, 177, 0.32);
+  border: 1px solid rgba(181, 108, 255, 0.32);
   background: var(--primary);
   color: var(--text);
   border-radius: 8px;
@@ -81,7 +81,7 @@ textarea {
 
 .newChat {
   height: 36px;
-  border: 1px solid rgba(165, 130, 177, 0.28);
+  border: 1px solid rgba(181, 108, 255, 0.28);
   background: var(--primary);
   color: var(--text);
   border-radius: 8px;
@@ -106,6 +106,25 @@ textarea {
   flex-shrink: 0;
 }
 
+.modeToggle {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid rgba(181, 108, 255, 0.25);
+  color: var(--accent);
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+
+.modeToggle:hover {
+  background: rgba(142, 61, 255, 0.2);
+}
+
 .historyList {
   display: flex;
   flex-direction: column;
@@ -115,7 +134,7 @@ textarea {
 }
 
 .historyItem {
-  border: 1px solid rgba(165, 130, 177, 0.16);
+  border: 1px solid rgba(181, 108, 255, 0.16);
   background: rgba(2, 0, 15, 0.54);
   color: var(--text);
   min-height: 44px;
@@ -147,11 +166,11 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(165, 130, 177, 0.32);
+  border: 1px solid rgba(181, 108, 255, 0.32);
   background: var(--primary);
   color: var(--text);
   border-radius: 8px;
-  box-shadow: 0 0 18px rgba(165, 130, 177, 0.24);
+  box-shadow: 0 0 18px rgba(181, 108, 255, 0.24);
 }
 
 .main {
@@ -167,7 +186,7 @@ textarea {
   align-items: center;
   padding: 0 24px;
   gap: 16px;
-  border-bottom: 1px solid rgba(165, 130, 177, 0.16);
+  border-bottom: 1px solid rgba(181, 108, 255, 0.16);
 }
 
 .statusPill {
@@ -195,11 +214,11 @@ textarea {
 .bubble {
   max-width: 790px;
   width: fit-content;
-  border: 1px solid rgba(165, 130, 177, 0.18);
+  border: 1px solid rgba(181, 108, 255, 0.18);
   border-radius: 8px;
   padding: 16px;
-  background: rgba(33, 10, 65, 0.68);
-  box-shadow: 0 0 28px rgba(84, 18, 136, 0.14);
+  background: rgba(18, 8, 42, 0.68);
+  box-shadow: 0 0 28px rgba(142, 61, 255, 0.14);
 }
 
 .message.user .bubble {
@@ -222,7 +241,7 @@ textarea {
 
 .metric,
 .resultPanel {
-  border: 1px solid rgba(165, 130, 177, 0.16);
+  border: 1px solid rgba(181, 108, 255, 0.16);
   background: rgba(2, 0, 15, 0.48);
   border-radius: 8px;
 }
@@ -265,8 +284,8 @@ textarea {
 }
 
 .cancelBtn {
-  background: rgba(165, 130, 177, 0.15);
-  border: 1px solid rgba(165, 130, 177, 0.3);
+  background: rgba(181, 108, 255, 0.15);
+  border: 1px solid rgba(181, 108, 255, 0.3);
   color: var(--accent);
   border-radius: 6px;
   padding: 4px 12px;
@@ -276,12 +295,12 @@ textarea {
 }
 
 .cancelBtn:hover {
-  background: rgba(165, 130, 177, 0.3);
+  background: rgba(181, 108, 255, 0.3);
 }
 
 .composer {
   margin: 0 min(7vw, 96px) 24px;
-  border: 1px solid rgba(165, 130, 177, 0.24);
+  border: 1px solid rgba(181, 108, 255, 0.24);
   background: var(--bg-2);
   border-radius: 8px;
   min-height: 64px;
@@ -290,7 +309,7 @@ textarea {
   gap: 10px;
   align-items: end;
   padding: 10px;
-  box-shadow: 0 0 30px rgba(84, 18, 136, 0.2);
+  box-shadow: 0 0 30px rgba(142, 61, 255, 0.2);
 }
 
 .composer textarea {
@@ -314,6 +333,115 @@ textarea {
   cursor: not-allowed;
 }
 
+.diagramBtn {
+  margin-top: 10px;
+  width: 100%;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(181, 108, 255, 0.32);
+  background: var(--primary);
+  color: var(--text);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.diagramBtn:hover {
+  background: #a55aff;
+}
+
+.diagramOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagramModal {
+  width: 90vw;
+  height: 90vh;
+  background: var(--bg);
+  border: 1px solid rgba(181, 108, 255, 0.25);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 0 60px rgba(142, 61, 255, 0.3);
+  position: relative;
+}
+
+.diagramHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(181, 108, 255, 0.18);
+  font-size: 15px;
+  color: var(--accent);
+}
+
+.diagramCloseBtn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(181, 108, 255, 0.32);
+  background: transparent;
+  color: var(--accent);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.diagramFrame {
+  flex: 1;
+  border: none;
+  width: 100%;
+}
+
+.diagramLoader {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  font-size: 15px;
+  gap: 10px;
+  background: var(--bg);
+}
+
+.diagramLoader::before {
+  content: '';
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 860px) {
+  .diagramModal {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+  }
+}
+
 @media (max-width: 860px) {
   .topbar {
     gap: 12px;
@@ -332,4 +460,87 @@ textarea {
     margin: 0 14px 14px;
   }
 }
+
+/* ── Yes/No interaction ── */
+
+.yesnoButtons {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 16px;
+  padding-left: min(7vw, 96px);
+}
+
+.yesnoBtn {
+  height: 40px;
+  border: 1px solid rgba(181, 108, 255, 0.28);
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 20px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.yesnoYes {
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.yesnoYes:hover {
+  background: rgba(74, 222, 128, 0.25);
+}
+
+.yesnoNo {
+  background: rgba(248, 113, 113, 0.1);
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.25);
+}
+
+.yesnoNo:hover {
+  background: rgba(248, 113, 113, 0.2);
+}
+
+.yesnoBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.yesValueInput {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.yesValueLabel {
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.yesValueRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.yesValueRow input {
+  flex: 1;
+  height: 42px;
+  border: 1px solid rgba(181, 108, 255, 0.24);
+  background: transparent;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 15px;
+  outline: none;
+}
+
+.yesValueRow input::placeholder {
+  color: var(--text-muted);
+}
+
+
 

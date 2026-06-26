@@ -26,6 +26,8 @@ class MujarradStorage:
         self.base_url = self.settings.mujarrad_api_base.rstrip("/")
         self.slug = self.settings.mujarrad_space_slug
         self.segments_slug = self.settings.mujarrad_segments_space_slug
+        self.graph_slug = self.settings.mujarrad_graph_space_slug
+        self.roi_slug = self.settings.mujarrad_roi_space_slug
         self.headers = {
             "Content-Type": "application/json",
             "X-API-Key": self.settings.mujarrad_public_key,
@@ -104,6 +106,91 @@ class MujarradStorage:
         self, segment_data: dict, conversation_id: str, user_id: str, segment_index: int
     ) -> None:
         await self.save_segment_node(segment_data, conversation_id, user_id, segment_index)
+
+    async def save_diagram_node(self, conversation_id: str, user_id: str, xml: str) -> None:
+        payload = {
+            "title": f"dia-{conversation_id}",
+            "nodeType": "REGULAR",
+            "nodeDetails": {
+                "id": str(uuid4()),
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "xml": xml,
+            },
+        }
+        try:
+            async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
+                response = await client.post(
+                    f"{self.base_url}/spaces/{self.graph_slug}/nodes",
+                    json=payload,
+                    headers=self.headers,
+                )
+                print("Mujarrad GRAPH POST:", response.status_code, response.text)
+                response.raise_for_status()
+        except Exception as e:
+            print("Mujarrad graph save skipped:", e)
+
+    async def get_diagram_node(self, conversation_id: str, user_id: str) -> str | None:
+        try:
+            async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
+                response = await client.get(
+                    f"{self.base_url}/spaces/{self.graph_slug}/nodes",
+                    params={"size": 50},
+                    headers=self.headers,
+                )
+                if not response.is_success:
+                    return None
+                data = response.json()
+                nodes = data.get("content", []) if isinstance(data, dict) else []
+                for node in nodes:
+                    details = node.get("nodeDetails") or {}
+                    if details.get("conversation_id") == conversation_id and details.get("user_id") == user_id:
+                        return details.get("xml")
+        except Exception as e:
+            print("Mujarrad graph load skipped:", e)
+        return None
+
+    async def save_roi_node(self, session_id: str, roi_data: dict) -> None:
+        payload = {
+            "title": f"roi-{session_id}",
+            "nodeType": "REGULAR",
+            "nodeDetails": {
+                "id": str(uuid4()),
+                "session_id": session_id,
+                **roi_data,
+            },
+        }
+        try:
+            async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
+                response = await client.post(
+                    f"{self.base_url}/spaces/{self.roi_slug}/nodes",
+                    json=payload,
+                    headers=self.headers,
+                )
+                print("Mujarrad ROI POST:", response.status_code, response.text)
+                response.raise_for_status()
+        except Exception as e:
+            print("Mujarrad roi save skipped:", e)
+
+    async def get_roi_node(self, session_id: str) -> dict | None:
+        try:
+            async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
+                response = await client.get(
+                    f"{self.base_url}/spaces/{self.roi_slug}/nodes",
+                    params={"size": 50},
+                    headers=self.headers,
+                )
+                if not response.is_success:
+                    return None
+                data = response.json()
+                nodes = data.get("content", []) if isinstance(data, dict) else []
+                for node in nodes:
+                    details = node.get("nodeDetails") or {}
+                    if details.get("session_id") == session_id:
+                        return details
+        except Exception as e:
+            print("Mujarrad roi load skipped:", e)
+        return None
 
     async def get_history(self, user_id: str) -> list[dict[str, Any]]:
         local = self._load_local()

@@ -13,6 +13,7 @@ export default defineConfig({
       '/analyze': 'http://localhost:8001',
       '/calculate': 'http://localhost:8001',
       '/mujarrad': 'http://localhost:8001',
+      '/system-builder': 'http://localhost:8001',
     },
   },
 });

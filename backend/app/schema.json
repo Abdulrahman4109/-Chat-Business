@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Mujarrad Node Payloads",
+  "description": "Payload structure for all Mujarrad API node types used by the system",
+  "definitions": {
+    "chatNode": {
+      "title": "Chat Node",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "pattern": "^chat-" },
+        "nodeType": { "type": "string", "enum": ["REGULAR"] },
+        "nodeDetails": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "user_id": { "type": "string" },
+            "conversation_id": { "type": "string" },
+            "user_message": { "$ref": "#/definitions/chatMessage" },
+            "assistant_message": { "$ref": "#/definitions/chatMessage" },
+            "extracted_data": { "$ref": "#/definitions/financialData" },
+            "calculation": { "$ref": "#/definitions/calculationResult" },
+            "created_at": { "type": "string", "format": "date-time" }
+          },
+          "required": ["id", "user_id", "conversation_id", "user_message", "assistant_message", "created_at"]
+        }
+      },
+      "required": ["title", "nodeType", "nodeDetails"]
+    },
+    "segmentNode": {
+      "title": "Segment Node",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "pattern": "^seg-" },
+        "nodeType": { "type": "string", "enum": ["REGULAR"] },
+        "nodeDetails": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "user_id": { "type": "string" },
+            "conversation_id": { "type": "string" },
+            "segment_index": { "type": "integer", "minimum": 0 },
+            "text": { "type": "string" },
+            "classifications": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "required": ["id", "user_id", "conversation_id", "segment_index", "text"]
+        }
+      },
+      "required": ["title", "nodeType", "nodeDetails"]
+    },
+    "diagramNode": {
+      "title": "Diagram Node",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "pattern": "^dia-" },
+        "nodeType": { "type": "string", "enum": ["REGULAR"] },
+        "nodeDetails": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "user_id": { "type": "string" },
+            "conversation_id": { "type": "string" },
+            "xml": { "type": "string" }
+          },
+          "required": ["id", "user_id", "conversation_id", "xml"]
+        }
+      },
+      "required": ["title", "nodeType", "nodeDetails"]
+    },
+    "roiNode": {
+      "title": "ROI Node",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "pattern": "^roi-" },
+        "nodeType": { "type": "string", "enum": ["REGULAR"] },
+        "nodeDetails": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "session_id": { "type": "string" }
+          },
+          "required": ["id", "session_id"]
+        }
+      },
+      "required": ["title", "nodeType", "nodeDetails"]
+    },
+    "chatMessage": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "content": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "extracted_data": { "$ref": "#/definitions/financialData" },
+        "calculation": { "$ref": "#/definitions/calculationResult" }
+      },
+      "required": ["id", "role", "content", "created_at"]
+    },
+    "financialData": {
+      "type": "object",
+      "properties": {
+        "goal_price": { "type": ["number", "null"] },
+        "monthly_income": { "type": ["number", "null"] },
+        "monthly_expenses": { "type": ["number", "null"] },
+        "current_savings": { "type": ["number", "null"] },
+        "extra_income": { "type": ["number", "null"] },
+        "current_debts": { "type": ["number", "null"] },
+        "goals": { "type": "array" },
+        "all_numbers": { "type": "array", "items": { "type": "number" } },
+        "assumptions": { "type": "array", "items": { "type": "string" } },
+        "segments": { "type": "array" }
+      }
+    },
+    "calculationResult": {
+      "type": "object",
+      "properties": {
+        "net_monthly_savings": { "type": "number" },
+        "remaining": { "type": "number" },
+        "months": { "type": ["integer", "null"] },
+        "raw_months": { "type": ["number", "null"] },
+        "duration_display": { "type": "string" },
+        "is_achievable": { "type": "boolean" },
+        "suggestions": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["net_monthly_savings", "remaining", "duration_display", "is_achievable", "suggestions"]
+    }
+  }
+}

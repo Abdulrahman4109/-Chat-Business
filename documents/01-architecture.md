@@ -1,104 +1,82 @@
 # Architecture
 
-A detailed breakdown of the project's directory layout, request lifecycle, and data flow.
-
 ## Project Structure
 
 ```
 chat/
-├── CLAUDE.md                  ← Project memory (auto-updated)
-├── ARCHITECTURE.md
-├── README.md
-├── .gitignore
-│
-├── backend/                   ← Python FastAPI
-│   ├── .env                   ← API keys (gitignored)
-│   ├── requirements.txt       ← fastapi, openai, pydantic, httpx, mangum
+├── backend/                          # Python FastAPI (port 8000)
 │   ├── app/
-│   │   ├── main.py            ← FastAPI app: all HTTP routes
-│   │   ├── models.py          ← Pydantic models (ChatRequest, FinancialData with None defaults, current_debts)
-│   │   ├── config.py          ← Settings from .env (pydantic-settings)
-│   │   ├── openai_service.py  ← LLM extraction service + time unit normalization pipeline
-│   │   ├── heuristics.py      ← Fallback: number extraction (no classification)
-│   │   ├── calculator.py      ← Goal timeline math (debts reduce effective savings)
-│   │   ├── nlp.py             ← Number extraction (regex + spaCy like_num)
-│   │   ├── segmenter.py       ← Arabic-aware text segmenter (regex)
-│   │   ├── storage.py         ← Local JSON + Mujarrad API client
-│   │   └── schema.json        ← Mujarrad node schema
-│   ├── scripts/
-│   │   ├── generate_training_data.py  ← Fine-tuning dataset generator
-│   │   ├── finetune_data.jsonl         ← Generated training examples
-│   │   └── HOW_TO_FINETUNE.md
-│   └── tests/                 ← 85 pytest tests
-│       ├── test_calculator.py
-│       ├── test_heuristics.py
-│       ├── test_models.py
-│       ├── test_nlp.py
-│       ├── test_openai_service.py
-│       └── test_segmenter.py
-│
-├── frontend/                  ← React + Vite
-│   ├── package.json
-│   ├── vite.config.js         ← Proxy /chat, /history → localhost:8001
-│   ├── index.html
-│   ├── src/
-│   │   ├── main.jsx           ← React app (App, Message, Metric)
-│   │   └── styles.css         ← Dark theme CSS
-│
-└── documents/                 ← Detailed docs
-    ├── 00-overview.md
-    ├── 01-architecture.md
-    ├── 02-backend-api.md
-    ├── 03-ai-pipeline.md
-    ├── 04-storage.md
-    └── 05-frontend.md
+│   │   ├── main.py                   # Routes: /chat, /history, /analyze, /calculate, /diagram
+│   │   ├── models.py                 # Pydantic schemas (request/response)
+│   │   ├── config.py                 # Environment settings
+│   │   ├── heuristics.py             # Text normalization, number extraction
+│   │   ├── calculator.py             # Goal timeline math
+│   │   ├── nlp.py                    # Regex + spaCy number extraction
+│   │   ├── storage.py                # Local JSON + remote API storage
+│   │   ├── openai_service.py         # Legacy extraction (used by /analyze)
+│   │   ├── diagram_generator.py      # Draw.io XML generation
+│   │   ├── segmenter.py              # Text splitting
+│   │   ├── financial_agent/          # Guided conversation pipeline
+│   │   └── system_builder/           # Separate system builder feature
+│   └── tests/                        # 96 tests
+├── frontend/                         # React 19 + Vite (port 5173)
+│   └── src/
+│       ├── main.jsx                  # App, Message, Metric components
+│       └── styles.css                # Dark theme
+└── documents/                        # System documentation
 ```
 
-## Request Flow (Detailed)
+## Request Flow
 
 ```
-User types message
-       ↓
-Frontend POST /chat
-  { message, user_id, conversation_id? }
-       ↓
-Backend main.py::chat()
-  1. extract_numbers(message)        ← regex + spaCy → raw numbers
-  2. LLM #1: segment_with_llm()     ← GPT → segments[]
-     ↳ Fallback: segmenter.segment_text() (regex)
-  3. LLM #2: extract()              ← GPT → FinancialData
-     a. extract_time_unit()         ← parse time phrases
-     b. normalize_value()           ← compute monthly equivalent
-     c. _aggregate_segment_extractions() ← merge into FinancialData
-  4. calculate_goal(data)           ← calculator → CalculationResult
-  5. _store_async (background)      ← after response returns:
-     ├─ save RAW segments (parallel)
-     ├─ update classified segments (parallel)
-     └─ save chat record → local + Mujarrad
-       ↓
-Response → Frontend
-  { conversation_id, assistant_message, extracted_data, calculation }
+User → POST /chat { message, user_id, conversation_id? }
+         │
+         ▼
+   1. normalize_text()
+      - Arabic/Persian digits → Western digits
+      - Detach numbers from adjacent text
+         │
+         ▼
+   2. FinancialAgentPipeline.run_orchestrator()
+         │
+         ├── process_input()      ← First message: extract all fields
+         ├── check_completeness() ← Any fields missing?
+         │   ├── Yes → generate_question() → response with question_type="yesno"
+         │   └── No  → calculate_goal()    → response with calculation
+         │
+         ▼
+   3. _store_chat_record_async()  ← Background save (never blocks)
+         │
+         ▼
+      Response → Frontend
 ```
 
 ## Data Flow Diagram
 
 ```
-┌──────────┐     POST /chat     ┌──────────────────┐
-│  React    │ ─────────────────→ │   FastAPI App    │
-│  Frontend │ ←──────────────── │  (main.py)       │
-└──────────┘     JSON response  └────────┬─────────┘
-                                         │
-                         ┌───────────────┼───────────────┐
-                         ▼               ▼               ▼
-                  ┌────────────┐  ┌─────────────┐  ┌──────────┐
-                  │ LLM #1     │  │ LLM #2     │  │Calculator│
-                  │ Segmenter  │  │ Extractor  │  │ (math)  │
-                  └─────┬──────┘  └──────┬──────┘  └────┬─────┘
-                        │                │              │
-                        ▼                ▼              ▼
-                  ┌────────────────────────────────────────┐
-                  │         MujarradStorage                │
-                  │  (local .mujarrad-chat/history.json    │
-                  │   + background async POST to Mujarrad) │
-                  └────────────────────────────────────────┘
+┌──────────┐    POST /chat     ┌─────────────────────┐
+│  React    │ ────────────────→ │    FastAPI App      │
+│  Frontend │ ←──────────────── │    (main.py)        │
+└──────────┘    JSON response   └─────────┬───────────┘
+                                          │
+                     ┌────────────────────┼────────────────────┐
+                     ▼                    ▼                    ▼
+              ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+              │  LLM Calls   │    │  Calculator  │    │   Storage    │
+              │ (extraction) │    │  (timeline)  │    │  (async)     │
+              └──────┬───────┘    └──────┬───────┘    └──────┬───────┘
+                     │                   │                   │
+                     ▼                   ▼                   ▼
+              ┌──────────────────────────────────────────────────┐
+              │              FinancialAgentState                 │
+              │  goal, income, expenses, savings, debts, extra   │
+              │  is_complete, result, messages                   │
+              └──────────────────────────────────────────────────┘
 ```
+
+## Key Design Decisions
+
+- **None ≠ 0**: Unmentioned fields stay `None` — UI hides them, calculator treats as 0
+- **Background storage**: Remote API failures never slow the user response
+- **Conversational extraction**: Ask for missing data instead of requiring it all at once
+- **Time-unit normalization**: All values normalized to monthly; if no unit specified, assume monthly

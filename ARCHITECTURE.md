@@ -4,35 +4,41 @@ A complete reference to the system's structure, data flow, components, and desig
 
 ---
 
-## Data Pipeline Diagram
+## Data Pipeline Diagram (Guided `/chat`)
 
 ```
-User Input: "اريد شراء عربة 800000 وعندي ادخار 300000..."
+User Input: "I want to buy a car worth 800,000, I earn 15,000..."
        │
        ▼
 ┌────────────────────────────────────────────────┐
-│ 1  NLP — Number Extraction (nlp.py)           │
-│    extract_numbers(message) → [800000,300000]  │
+│ 1  Normalize (heuristics.py)                  │
+│    normalize_text(message)                     │
+│    ├─ Any non-Western digits → 0-9            │
+│    └─ Insert space between text + digits       │
 └────────────────────┬──────────────────────────┘
                      │
                      ▼
 ┌────────────────────────────────────────────────┐
-│ 2  LLM #1 — Segmenter (openai_service.py)     │
-│    segment_with_llm(message) → {"segments":[]} │
-│    Falls back to segmenter.segment_text()      │
+│ 2  Guided Pipeline (financial_agent/)          │
+│    First message:                              │
+│      process_input() → LLM extracts all fields │
+│    Follow-up:                                  │
+│      update_data() → LLM extracts value        │
 └────────────────────┬──────────────────────────┘
                      │
                      ▼
 ┌────────────────────────────────────────────────┐
-│ 3  LLM #2 — Extractor (openai_service.py)     │
-│    extract(message, numbers, segments)         │
-│    → FinancialData (classified, time-normalized)│
-│    Falls back to heuristic_extract() (numbers) │
+│ 3  Completeness Check                         │
+│    check_completeness(state)                   │
+│    ├─ If missing fields → generate_question()  │
+│    │     Response: question_type="yesno"       │
+│    │     Waits for user Yes/No + value          │
+│    └─ If all filled → proceed to calculator    │
 └────────────────────┬──────────────────────────┘
                      │
                      ▼
 ┌────────────────────────────────────────────────┐
-│ 4  Calculator (calculator.py)                 │
+│ 4  Calculator (calculator.py)                  │
 │    calculate_goal(data) → CalculationResult    │
 │    net = income + extra − expenses             │
 │    eff_savings = max(savings − debts, 0)       │
@@ -42,11 +48,10 @@ User Input: "اريد شراء عربة 800000 وعندي ادخار 300000..."
                      │
                      ▼
 ┌────────────────────────────────────────────────┐
-│ 5  _store_async (background task, never blocks)│
-│    Run after response is returned              │
-│    ├─ Save raw segments (parallel gather)      │
-│    ├─ Update classified segments (parallel)     │
-│    └─ save_chat_record → local + Mujarrad      │
+│ 5  Background Storage (never blocks response)  │
+│    asyncio.create_task(save_chat_record)       │
+│    ├─ Local JSON (~/.mujarrad-chat/history)    │
+│    └─ Remote Mujarrad API (best-effort)        │
 └────────────────────────────────────────────────┘
 ```
 
@@ -66,24 +71,27 @@ chat/
 │   ├── requirements.txt       ← Python dependencies
 │   │
 │   ├── app/
-│   │   ├── main.py            ← FastAPI app: all 6 HTTP routes
+│   │   ├── main.py            ← FastAPI: all 11+ HTTP routes
 │   │   ├── models.py          ← Pydantic data models
 │   │   ├── config.py          ← pydantic-settings from .env
-│   │   ├── openai_service.py  ← Two-LLM pipeline + time normalization
-│   │   ├── heuristics.py      ← Fallback number extraction
+│   │   ├── openai_service.py  ← Legacy extraction (used by /analyze)
+│   │   ├── heuristics.py      ← Text normalization & defaults
 │   │   ├── calculator.py      ← Goal timeline math
 │   │   ├── nlp.py             ← Regex + optional spaCy number extraction
-│   │   ├── segmenter.py       ← Arabic-aware regex text splitter
+│   │   ├── segmenter.py       ← Text splitting
 │   │   ├── storage.py         ← Local JSON + Mujarrad API client
-│   │   └── schema.json        ← Mujarrad node schema
+│   │   ├── diagram_generator.py ← Draw.io XML generation
+│   │   ├── financial_agent/   ← Guided conversation state machine
+│   │   │   ├── models.py      ← FinancialAgentState
+│   │   │   ├── pipeline.py    ← Pipeline (process→check→question→calculate)
+│   │   │   └── prompts.py     ← LLM prompts for extraction
+│   │   └── system_builder/    ← Separate system design feature
 │   │
-│   ├── scripts/
-│   │   ├── generate_training_data.py  ← Dataset generator
-│   │   ├── finetune_data.jsonl         ← Generated examples
-│   │   └── HOW_TO_FINETUNE.md
+│   ├── scripts/               ← Training data generation
 │   │
-│   └── tests/                 ← 85 tests total
+│   └── tests/                 ← 96 tests total
 │       ├── test_calculator.py        (10)
+│       ├── test_financial_agent.py   (11)
 │       ├── test_heuristics.py        (24)
 │       ├── test_models.py            (10)
 │       ├── test_nlp.py               (9)
@@ -92,10 +100,11 @@ chat/
 │
 ├── frontend/
 │   ├── package.json
-│   ├── vite.config.js         ← Proxy /api/* → localhost:8001
+│   ├── vite.config.js         ← Proxy /* → localhost:8001
 │   ├── index.html
 │   └── src/
 │       ├── main.jsx           ← React app (App, Message, Metric)
+│       ├── system-builder/    ← System builder UI
 │       └── styles.css         ← Dark theme
 │
 └── documents/                 ← Detailed documentation
@@ -104,29 +113,26 @@ chat/
     ├── 02-backend-api.md
     ├── 03-ai-pipeline.md
     ├── 04-storage.md
-    └── 05-frontend.md
+    ├── 05-frontend.md
+    ├── 06-financial-agent.md
+    └── 07-diagram.md
 ```
 
 ---
 
-## Request Lifecycle
+## Request Lifecycle (`/chat`)
 
-Every `/chat` request follows this exact path:
+| # | Step | Component | What Happens |
+|---|------|-----------|-------------|
+| 1 | Normalize | `heuristics.py` | Convert non-Western digits, separate attached numbers |
+| 2 | Process Input | `financial_agent/pipeline.py` | LLM extracts all fields → normalizes time units to monthly |
+| 3 | Check Completeness | `financial_agent/pipeline.py` | All 6 fields non-null? |
+| 4a | If incomplete | `financial_agent/pipeline.py` | Generate yes/no question → respond immediately |
+| 4b | If complete | `calculator.py` | Calculate timeline, suggestions |
+| 5 | Build Response | `main.py` | Assemble JSON with/extracted_data, calculation, question_type |
+| 6 | Background Storage | `main.py` | `_store_chat_record_async()` — never blocks response |
 
-| # | Step | File | What Happens |
-|---|------|------|-------------|
-| 1 | Number Extraction | `nlp.py` | Regex + spaCy find all numbers in raw message |
-| 2 | LLM Segmentation | `openai_service.py` | GPT-4o-mini splits message into semantic segments |
-| 3 | Fallback Split | `segmenter.py` | Regex split if GPT is unavailable |
-| 4 | LLM Extraction | `openai_service.py` | GPT classifies each segment → FinancialData |
-| 5 | Time Normalization | `openai_service.py` | Any time unit → monthly equivalent |
-| 6 | Aggregation | `openai_service.py` | Merge per-segment extractions, sum same fields |
-| 7 | Calculator | `calculator.py` | Compute timeline, edge case handling |
-| 8 | Response Builder | `main.py` | Build natural-language reply with suggestions |
-| 9 | Background Storage | `main.py` | `_store_async`: raw segs → classified → chat |
-| 10 | Response | `main.py` | Return JSON to frontend immediately |
-
-The response returns at step 10. Step 9 runs as a background task.
+Response returns after step 4 or 5. Storage (step 6) runs in background after response.
 
 ---
 
@@ -142,7 +148,9 @@ The response returns at step 10. Step 9 runs as a background task.
 | `current_savings` | float? | null | null = user didn't mention |
 | `extra_income` | float? | null | Bonuses, side income |
 | `current_debts` | float? | null | Outstanding debts |
-| `goals` | list | [] | All goals (largest = primary) |
+| `goals` | list | [] | Goal descriptors |
+| `all_numbers` | list | [] | All detected numbers |
+| `assumptions` | list | [] | Processing notes |
 | `segments` | list | [] | Per-segment classifications |
 
 ### CalculationResult (what the system computed)
@@ -150,76 +158,91 @@ The response returns at step 10. Step 9 runs as a background task.
 | Field | Type | Meaning |
 |-------|------|---------|
 | `net_monthly_savings` | float | income + extra − expenses |
-| `remaining` | float | goal − savings (min 0) |
-| `months` | int? | null if unachievable |
+| `remaining` | float | goal − effective savings (min 0) |
+| `months` | int? | null if unachievable, 0 if already funded |
+| `raw_months` | float? | Unrounded value |
 | `duration_display` | str | "3 years and 5 months" |
 | `is_achievable` | bool | Can the goal be reached? |
+| `suggestions` | list[str] | Up to 3 optimization tips |
+
+### ChatResponse (the API response)
+
+| Field | Type | Default | Purpose |
+|-------|------|---------|---------|
+| `conversation_id` | string | — | Groups messages |
+| `assistant_message` | ChatMessage | — | AI response |
+| `extracted_data` | FinancialData? | null | Parsed numbers |
+| `calculation` | CalculationResult? | null | Timeline result |
+| `question_type` | string | "" | "yesno" during follow-up |
+| `question_field` | string | "" | Field being asked |
+| `is_complete` | bool | True | Done collecting data |
+
+---
+
+## Storage Spaces
+
+| Slug | Content | API Methods |
+|------|---------|-------------|
+| `chat` | Conversation history | `save_chat_record()`, `get_history()` |
+| `example` | Segment nodes (legacy) | `save_segment_node()` |
+| `graph` | Diagram XML | `save_diagram_node()`, `get_diagram_node()` |
+| `roi` | ROI calculations | `save_roi_node()`, `get_roi_node()` |
+
+All remote saves are best-effort (failures logged, never raise). Auth via `X-API-Key` + `X-API-Secret` headers.
 
 ---
 
 ## Key Design Decisions
 
+### Single LLM Call per Turn (not two)
+- The old pipeline used two LLM calls (segmenter + extractor)
+- The guided pipeline uses one LLM call per turn — `process_input()` on first message, `update_data()` on follow-ups
+- Simpler, faster, fewer API failures
+
+### Conversational Extraction (not one-shot)
+- Missing fields trigger yes/no questions instead of failing or guessing
+- User answers with "Yes, {amount}" or "No"
+- Questions asked in fixed order: expenses → savings → debts → extra income
+- No re-asking already-answered fields
+
 ### LLM Understands, Regex Backs Up
-- Primary path uses GPT-4o-mini for both segmentation and classification
-- LLM is trusted to understand context: same Arabic word (شهري/اسبوعي/يومي) can be TYPE or FREQUENCY depending on semantics
-- Prompt gives semantic guidance ("think about the meaning") not rigid rules
-- No post-LLM validation rules override the LLM's judgment
-- Regex fallbacks handle offline/API-failure scenarios gracefully
-- Heuristics provide raw numbers only (no keyword classification)
-
-### Two LLM Calls (Not One)
-- **Segmenter** (LLM #1): splits into atomic units — improves accuracy vs processing raw text
-- **Extractor** (LLM #2): classifies each segment independently — each number gets its own field
-- Separate prompts, separate concerns, same model
-
-### Time Unit Normalization
-- LLM sets time_unit based on context understanding (frequency vs type)
-- `extract_time_unit` fallback: strips punctuation, allows 1 word between keyword and number
-- `normalize_value` converts any unit → monthly equivalent (25+ Arabic/English variants)
-- Missing unit = assumed monthly (for extra_income and monthly_expenses only)
-- Defaults: extra_income without time_unit → monthly; monthly_expenses without time_unit → monthly
-
-### Background Storage
-- All I/O (local file + Mujarrad API) runs in `asyncio.create_task`
-- Response returns in ~2-3s (LLM latency only), storage adds 0ms to user-perceived time
-- Failures in storage are logged and never surfaced
+- LLM classifies numbers into fields based on semantic understanding
+- `heuristics.py` provides raw `all_numbers` list (no classification)
+- Time unit normalization: weekly×4.2857, daily×30, yearly÷12; no unit = assume monthly
 
 ### None ≠ 0
 - Unmentioned fields default to `None`, not `0`
 - Frontend `Metric` component returns `null` for None values
-- Calculator converts None→0 internally via `apply_intelligent_defaults`
+- Calculator converts None→0 internally
 - User sees only fields they actually mentioned
 
----
+### Background Storage
+- All I/O (local file + Mujarrad API) runs in `asyncio.create_task`
+- Response returns in ~2-3s (LLM latency only), storage adds 0ms
+- Failures in storage are logged and never surfaced
 
-## Key Files Reference
-
-| File | Responsibility | Key Functions |
-|------|---------------|---------------|
-| `app/main.py` | HTTP layer, routing, response assembly | `chat()`, `analyze()`, `calculate()`, `_store_async()` |
-| `app/models.py` | All Pydantic schemas | `FinancialData`, `ChatRequest`, `ChatResponse`, `CalculationResult` |
-| `app/config.py` | Environment + settings | `Settings` class from pydantic-settings |
-| `app/openai_service.py` | Two-LLM pipeline, time normalization | `segment_with_llm()`, `extract()`, `extract_time_unit()`, `normalize_value()` |
-| `app/heuristics.py` | Offline fallback | `heuristic_extract()`, `apply_intelligent_defaults()` |
-| `app/calculator.py` | Timeline math | `calculate_goal()`, `format_duration()`, `build_suggestions()` |
-| `app/nlp.py` | Number detection | `extract_numbers()` — regex + spaCy |
-| `app/segmenter.py` | Regex text splitting | `segment_text()` |
-| `app/storage.py` | Local + remote persistence | `save_chat_record()`, `get_history()`, `save_segment_node()` |
+### Language Detection
+- Language detected by Unicode block (Arabic `\u0600-\u06FF`)
+- Questions asked in the user's detected language
+- Fallback to English if no Arabic characters detected
 
 ---
 
-## Configuration (`.env`)
+## Endpoints
 
-| Variable | Example | Purpose |
-|----------|---------|---------|
-| `OPENAI_API_KEY` | `sk-or-v1-...` | OpenRouter API key |
-| `OPENAI_BASE_URL` | `https://openrouter.ai/api/v1` | Default; empty = direct OpenAI |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Model for both LLMs |
-| `MUJARRAD_PUBLIC_KEY` | `pk_live_...` | Mujarrad API public key |
-| `MUJARRAD_SECRET_KEY` | `sk_live_...` | Mujarrad API secret key |
-| `MUJARRAD_SPACE_URL` | `https://.../spaces/chat` | Chat records space |
-| `MUJARRAD_SEGMENTS_SPACE_URL` | `https://.../spaces/example` | Segment nodes space |
-| `CORS_ORIGINS` | `http://localhost:5173,...` | Comma-separated allowed origins |
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/chat` | POST | Guided extraction + calculation |
+| `/analyze` | POST | Legacy one-shot extraction |
+| `/calculate` | POST | Pure timeline math |
+| `/diagram` | POST | Generate draw.io XML |
+| `/diagram/save` | POST | Persist edited diagram |
+| `/diagram/load` | GET | Load saved diagram |
+| `/history` | GET | Past conversations |
+| `/system-builder/chat` | POST | System design conversation |
+| `/system-builder/roi/save` | POST | Save ROI data |
+| `/health` | GET | Liveness check |
+| `/mujarrad/status` | GET | Storage connection status |
 
 ---
 
@@ -229,9 +252,7 @@ The response returns at step 10. Step 9 runs as a background task.
 - **Already funded**: Months = 0, "Your goal is already funded"
 - **Negative net savings**: Unachievable, suggests expense reduction
 - **Debts present**: `effective_savings = max(savings − debts, 0)`
-- **Multiple goals**: Largest value becomes primary
 - **No time unit**: Value assumed monthly
-- **Arabic attached numbers**: `ادخار20000` → split correctly
+- **Arabic-Indic digits**: `١٢٣` → normalized to 123
+- **Attached numbers**: `text123text` → separated to `text 123 text`
 - **Comma-formatted**: `800,000` → 800000
-- **Arabic-Indic digits**: `١٢٣` → 123
-- **15+ segments**: Truncated, remainder merged into last segment

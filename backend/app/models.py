@@ -73,9 +73,17 @@ class ChatRecord(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
+class DiagramRequest(BaseModel):
+    data: FinancialData
+    calculation: CalculationResult
+
+
 class ChatResponse(BaseModel):
     conversation_id: str
     assistant_message: ChatMessage
-    extracted_data: FinancialData
-    calculation: CalculationResult
+    extracted_data: FinancialData | None = None
+    calculation: CalculationResult | None = None
+    question_type: str = ""
+    question_field: str = ""
+    is_complete: bool = True
 

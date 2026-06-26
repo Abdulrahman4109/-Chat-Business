@@ -1,107 +1,72 @@
 # Frontend
 
-React 19 + Vite single-page application with a dark theme.
-
----
+React 19 application using Vite, no router, no state management library — just hooks.
 
 ## Components
 
-### `App` (root — `main.jsx`)
-
+### `App` (root)
 **State:**
-| Variable | Type | Source | Description |
-|----------|------|--------|-------------|
-| `userId` | string | localStorage | Persistent user ID (generated once) |
-| `conversationId` | string? | Server response | Links messages in a conversation |
-| `messages[]` | ChatMessage[] | Local state + API | Message history for current conversation |
-| `input` | string | Textarea | Current input text |
-| `history[]` | ChatRecord[] | GET /history | All past conversations |
-| `loading` | boolean | — | Loading indicator |
-| `sidebarOpen` | boolean | — | Mobile sidebar toggle |
-| `abortRef` | ref | AbortController | Cancel in-flight request |
+| Variable | Type | Purpose |
+|----------|------|---------|
+| `userId` | string | Current user |
+| `conversationId` | string? | Active conversation (null = new) |
+| `messages` | array | Chat messages for active conversation |
+| `input` | string | Text input |
+| `history` | array | Past conversations |
+| `loading` | bool | Waiting for backend |
+| `pendingYesNo` | object? | Current yes/no question: `{ field, text }` |
+| `abortRef` | ref | `AbortController` for cancel |
 
-**Key Handlers:**
-- `sendMessage()` → POST /chat with message + userId + conversationId (uses AbortController)
-- `cancelRequest()` → aborts fetch signal, resets loading
-- `loadHistory()` → GET /history?user_id=
-- Sidebar "New goal" → resets conversationId, shows welcome message
-- Sidebar history item → rebuilds messages from saved ChatRecords
-- Cancel button appears in typing indicator during loading
+### `Message` (child)
+Renders a single chat bubble. If the message contains `extracted_data` and `calculation`, shows:
+- **Analysis grid**: income, expenses, net savings (with debt indicator if applicable)
+- **Result panel**: timeline duration, achievability, suggestions
+- **"View Financial Plan" button**: opens the diagram modal (see 07-diagram.md)
 
-### `Message` (chat bubble — `main.jsx`)
+If `extracted_data` exists but `is_complete` is false, only the text is shown (no grid).
 
-Renders a chat bubble containing:
-1. **Text content** (`.bubble p`)
-2. **Analysis grid** (`.analysisGrid`) — if `message.extracted_data` exists:
-   - Goal, Income, Expenses, Savings, Extra, Debts — each as a `Metric` component
-   - Net Savings row shown conditionally when `current_debts` exists
-3. **Result panel** (`.resultPanel`) — if `message.calculation` exists:
-   - Duration display (e.g., "3 years and 5 months")
-   - Net monthly savings
-   - Remaining amount
+### `Metric` (child)
+Displays a labeled value row. Returns `null` for `null`/`undefined` values — unmentioned fields are invisible.
 
-### `Metric` (label+value card)
+## Chat Flow
 
-Simple display component: label (e.g., "Goal") + formatted number (e.g., "800,000").
-Returns `null` when value is `null` or `undefined` — unmentioned fields are hidden entirely.
+### Send Message
+1. Create `AbortController` for cancellation
+2. POST `/chat` with message, userId, conversationId
+3. If `is_complete: false`:
+   - Show assistant message text
+   - Show Yes/No buttons
+   - On Yes: show inline input for the value
+   - On No: automatically send "No" as next message
+4. If `is_complete: true`:
+   - Show assistant message + analysis grid + result
+   - Hide Yes/No buttons
+5. On error or abort: show error state, re-enable input
 
----
+### Cancel
+Shows a cancel button during `loading`. Clicking it aborts the fetch via `AbortController`.
 
-## API Integration
-
-All API calls go through `API_BASE_URL` (from `VITE_API_BASE_URL` env var, or `''` for same-origin).
-
-In development, Vite proxies:
-```
-/chat     → http://localhost:8001
-/history  → http://localhost:8001
-/health   → http://localhost:8001
-/analyze  → http://localhost:8001
-/calculate→ http://localhost:8001
-/mujarrad → http://localhost:8001
-```
-
-**Why 8001 not 8000?** The Vite dev server runs on 5173 and proxies to 8001. The backend can run on either port — the proxy configuration targets 8001.
-
----
-
-## Cancel Button
-
-When `loading` is true, a **Cancel** button appears next to the typing indicator. Clicking it:
-1. Aborts the in-flight `fetch` request via `AbortController`
-2. Resets `loading` to false
-3. Does NOT send an error message to the chat
-4. User can resend a corrected message
-
----
+## History Sidebar
+- Groups conversations by `conversation_id`
+- Most recent first
+- Each entry shows the first user message as the title
+- Click to resume a past conversation
+- GET `/history` on page load
 
 ## Styling
+| Variable | Value |
+|----------|-------|
+| `--bg` | `#02000F` |
+| `--primary` | `#541288` |
+| `--accent` | `#A582B1` |
+| `--text` | `#F5F5F5` |
 
-### Color Palette (CSS Variables)
-| Variable | Value | Usage |
-|----------|-------|-------|
-| `--bg` | `#02000F` | Main background |
-| `--bg-2` | `#210A41` | Sidebar, composer |
-| `--primary` | `#541288` | Buttons, user bubbles |
-| `--accent` | `#A582B1` | Subtle text, borders |
-| `--text` | `#f4eff8` | Primary text |
-| `--text-muted` | `#595063` | Placeholder text |
+- Dark theme via CSS variables
+- Responsive breakpoint at 860px
+- No CSS framework — all custom
 
-### Layout
-- Desktop: CSS Grid — sidebar (304px) + main (1fr)
-- Mobile (≤860px): sidebar overlays as slide-in drawer
-
-### Breakpoints
-- `860px`: Grid → single column, sidebar becomes overlay
-- Analysis grid: 5 columns desktop → 2 columns mobile
-
----
-
-## Conversation Grouping
-
-History is grouped by `conversation_id`, sorted by `created_at` (most recent first). Sidebar shows the first user message as a label.
-
-When a history item is clicked:
-1. The saved ChatRecord pair (user_message + assistant_message) is rebuilt into the messages array
-2. The conversation_id is restored
-3. The user can continue the conversation
+## Diagram Modal
+- Embedded iframe loading `https://embed.diagrams.net`
+- Cross-origin messaging: `postMessage` API
+- Only accepts messages from `*.diagrams.net`, `*.draw.io`
+- Save button in draw.io triggers a POST to `/diagram/save`

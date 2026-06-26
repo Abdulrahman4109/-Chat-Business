@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     mujarrad_api_base: str = "https://www.mujarrad.com/api"
     mujarrad_space_url: str = "https://www.mujarrad.com/spaces/chat"
     mujarrad_segments_space_url: str = "https://www.mujarrad.com/spaces/example"
+    mujarrad_graph_space_url: str = "https://www.mujarrad.com/spaces/graph"
+    mujarrad_roi_space_url: str = "https://www.mujarrad.com/spaces/roi"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -30,6 +32,16 @@ class Settings(BaseSettings):
     def mujarrad_segments_space_slug(self) -> str:
         path = urlparse(self.mujarrad_segments_space_url).path.rstrip("/")
         return path.split("/")[-1] if path else "example"
+
+    @property
+    def mujarrad_graph_space_slug(self) -> str:
+        path = urlparse(self.mujarrad_graph_space_url).path.rstrip("/")
+        return path.split("/")[-1] if path else "graph"
+
+    @property
+    def mujarrad_roi_space_slug(self) -> str:
+        path = urlparse(self.mujarrad_roi_space_url).path.rstrip("/")
+        return path.split("/")[-1] if path else "roi"
 
 
 @lru_cache

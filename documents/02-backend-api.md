@@ -1,163 +1,182 @@
 # Backend API
 
-Complete reference for all HTTP endpoints.
+## POST `/chat` — Main Endpoint
 
-## Routes
+Conversational pipeline: extract fields → ask follow-ups → calculate → respond.
 
-### GET `/health`
-
-**Response:** `{"status": "ok"}`
-
----
-
-### POST `/analyze`
-
-Extract financial data without saving.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `message` | string | User input (1-8000 chars) |
-
-**Response:**
+**Request:**
 ```json
 {
-  "data": {
-    "goal_price": 800000,
-    "monthly_income": 17143,
-    "monthly_expenses": 3857,
-    "current_savings": 20000,
-    "extra_income": 6000,
-    "current_debts": null,
-    "goals": [{"name": "primary goal", "goal_price": 800000}],
-    "all_numbers": [4000, 20000, ...],
-    "assumptions": [],
-    "segments": [...]
-  },
-  "token_numbers": [4000, 20000, 800000, ...]
+  "message": "I want to buy a car worth 800,000. My salary is 16,000.",
+  "user_id": "default-user",
+  "conversation_id": null
 }
 ```
 
-Fields not mentioned by the user appear as `null` (e.g. `current_debts`) and are hidden from the frontend.
-
----
-
-### POST `/calculate`
-
-Compute timeline from structured FinancialData.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `data` | FinancialData | Pre-extracted financial data |
-
-**Response:**
-```json
-{
-  "net_monthly_savings": 19286,
-  "remaining": 780000,
-  "months": 41,
-  "raw_months": 40.44,
-  "duration_display": "3 years and 5 months",
-  "is_achievable": true,
-  "suggestions": [
-    "Keep at least 19,286 per month reserved for this goal."
-  ]
-}
-```
-
----
-
-### POST `/chat` (main endpoint)
-
-Full pipeline: extract → calculate → respond → background store.
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `message` | string | yes | User message (1-8000 chars) |
-| `user_id` | string | no | Default: "default-user" |
-| `conversation_id` | string | no | New UUID generated if not provided |
-
-**Response:**
+**Response (complete):**
 ```json
 {
   "conversation_id": "uuid",
   "assistant_message": {
-    "id": "uuid",
     "role": "assistant",
-    "content": "At your current pace, it will take 3 years and 5 months...",
-    "created_at": "2026-06-18T21:00:00+00:00",
-    "extracted_data": { ... },
-    "calculation": { ... }
+    "content": "At your current pace, it will take 3 years and 5 months."
   },
-  "extracted_data": { ... },
-  "calculation": { ... }
+  "extracted_data": { "goal_price": 800000, "monthly_income": 16000, ... },
+  "calculation": { "duration_display": "3 years and 5 months", "months": 41, ... },
+  "question_type": "",
+  "question_field": "",
+  "is_complete": true
 }
 ```
 
----
-
-### GET `/history`
-
-Fetch conversation history for a user.
-
-| Query | Type | Default | Description |
-|-------|------|---------|-------------|
-| `user_id` | string | "default-user" | User identifier |
-
-**Response:** `list[ChatRecord]`
-
----
-
-### GET `/mujarrad/status`
-
-Check Mujarrad API connectivity.
-
-**Response:**
+**Response (incomplete — awaiting answer):**
 ```json
 {
-  "connected": true,
-  "space": "chat",
-  "segments_space": "example",
-  "api": "https://www.mujarrad.com/api"
+  "conversation_id": "uuid",
+  "assistant_message": { "role": "assistant", "content": "Do you have any monthly expenses?" },
+  "extracted_data": { "goal_price": 800000, "monthly_income": 16000 },
+  "question_type": "yesno",
+  "question_field": "monthly_expenses",
+  "is_complete": false
 }
 ```
 
+**Flow:**
+1. First call → LLM extracts what it can
+2. Missing fields → response has `question_type: "yesno"`, `is_complete: false`
+3. User answers "Yes, 1000" or "No" → call again with same `conversation_id`
+4. Repeat for each missing field until `is_complete: true`
+
+**Question order:** monthly_expenses → current_savings → current_debts → extra_income
+
 ---
 
-## Pydantic Models
+## POST `/analyze` — Extraction Only
+
+One-shot extraction without conversation. Uses legacy `OpenAIExtractionService`.
+
+**Request:** `{ "message": "..." }`
+
+**Response:** `{ "data": FinancialData, "token_numbers": [...] }`
+
+---
+
+## POST `/calculate` — Timeline Only
+
+Pure calculation from already-extracted data.
+
+**Request:** `{ "data": FinancialData }`
+
+**Response:** `CalculationResult`
+
+---
+
+## GET `/history`
+
+**Query:** `?user_id=default-user`
+
+**Response:** `[ChatRecord, ...]` — All conversations for this user.
+
+---
+
+## POST `/diagram`
+
+Generate a draw.io XML roadmap diagram.
+
+**Request:** `{ "data": FinancialData, "calculation": CalculationResult }`
+
+**Response:** `{ "xml": "<mxGraphModel>..." }`
+
+---
+
+## POST `/diagram/save`
+
+Save an edited diagram.
+
+**Request:** `{ "conversation_id": "...", "user_id": "...", "xml": "..." }`
+
+**Response:** `{ "success": true }`
+
+---
+
+## GET `/diagram/load`
+
+Load a saved diagram.
+
+**Query:** `?conversation_id=...&user_id=default-user`
+
+**Response:** `{ "xml": "..." }` or `{ "xml": null }`
+
+---
+
+## GET `/health`
+
+**Response:** `{ "status": "ok" }`
+
+---
+
+## GET `/mujarrad/status`
+
+**Response:** `{ "connected": true, "space": "chat", "segments_space": "example", "api": "..." }`
+
+---
+
+## Models
+
+### ChatRequest
+| Field | Type | Required | Default |
+|-------|------|----------|---------|
+| `message` | string | yes | — |
+| `user_id` | string | no | "default-user" |
+| `conversation_id` | string? | no | null (auto-generated) |
+
+### ChatResponse
+| Field | Type | Description |
+|-------|------|-------------|
+| `conversation_id` | string | Conversation identifier |
+| `assistant_message` | ChatMessage | Response text + optional data |
+| `extracted_data` | FinancialData? | Parsed numbers (final message only) |
+| `calculation` | CalculationResult? | Timeline result (final message only) |
+| `question_type` | string | "yesno" if follow-up needed |
+| `question_field` | string | Which field is being asked |
+| `is_complete` | bool | Whether all data has been collected |
 
 ### FinancialData
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `goal_price` | float? | null | Target purchase amount |
-| `monthly_income` | float? | null | Base salary (monthly normalized) |
-| `monthly_expenses` | float? | null | Monthly spending |
-| `current_savings` | float? | null | Already saved (null = unmentioned) |
-| `extra_income` | float? | null | Bonuses, side income (null = unmentioned) |
-| `current_debts` | float? | null | Outstanding debts (null = unmentioned) |
-| `goals` | list[dict] | [] | Goal descriptors (largest = primary) |
-| `all_numbers` | list[float] | [] | All detected numbers |
-| `assumptions` | list[str] | [] | Processing notes |
-| `segments` | list[dict] | [] | Per-segment classifications |
+All fields nullable float — `null` means unmentioned (hidden in UI).
+
+| Field | Description |
+|-------|-------------|
+| `goal_price` | Target amount to reach |
+| `monthly_income` | Main salary/income |
+| `monthly_expenses` | Regular monthly spending |
+| `current_savings` | Existing savings/assets |
+| `extra_income` | Additional income (bonuses, side gigs) |
+| `current_debts` | Outstanding debts/loans |
+| `goals` | List of goal descriptors |
+| `all_numbers` | All detected numbers |
+| `assumptions` | Processing notes |
+| `segments` | Per-segment classifications |
 
 ### CalculationResult
 | Field | Type | Description |
 |-------|------|-------------|
 | `net_monthly_savings` | float | income + extra - expenses |
 | `remaining` | float | goal - savings (min 0) |
-| `months` | int? | Months to goal (null = unachievable) |
-| `raw_months` | float? | Exact months before ceiling |
-| `duration_display` | str | "5 months", "1 year", "2 years and 3 months" |
+| `months` | int? | Months to goal |
+| `duration_display` | string | Human-readable: "3 years and 5 months" |
 | `is_achievable` | bool | Can the goal be reached? |
-| `suggestions` | list[str] | Up to 3 suggestions |
+| `suggestions` | string[] | Up to 3 optimization tips |
 
 ### ChatRecord
+Stored per conversation turn.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | string | UUID |
 | `user_id` | string | Who sent this |
-| `conversation_id` | string | Groups messages into conversations |
-| `user_message` | ChatMessage | Original user input |
-| `assistant_message` | ChatMessage | AI response + data |
+| `conversation_id` | string | Groups turns into conversations |
+| `user_message` | ChatMessage | Original input |
+| `assistant_message` | ChatMessage | AI response |
 | `extracted_data` | FinancialData | Parsed numbers |
 | `calculation` | CalculationResult | Timeline result |
 | `created_at` | string | ISO datetime |
