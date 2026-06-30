@@ -1,16 +1,10 @@
 # Financial Chat Assistant
 
-A conversational AI that extracts financial goals from natural language, asks for missing information, and calculates a timeline to reach the goal.
+A conversational AI that helps users plan financial goals.
 
-## How It Works
+Users describe a financial goal in natural language (Arabic or English). The system extracts numbers, asks for missing info one by one, then calculates a timeline. Results include a visual draw.io roadmap diagram.
 
-1. User sends a message about their financial goal
-2. The system extracts numbers (goal amount, income, expenses, etc.)
-3. If any information is missing, it asks a yes/no question
-4. Once all data is collected, it calculates the timeline
-5. Result is displayed with an optional visual roadmap diagram
-
-## Quick Links
+## Documents
 
 | Document | Content |
 |----------|---------|
@@ -20,4 +14,5 @@ A conversational AI that extracts financial goals from natural language, asks fo
 | [04-storage.md](04-storage.md) | Local JSON + remote API storage |
 | [05-frontend.md](05-frontend.md) | React components, state, user interaction |
 | [06-financial-agent.md](06-financial-agent.md) | State machine, prompts, conversation flow |
-| [07-diagram.md](07-diagram.md) | Draw.io roadmap diagram integration |
+| [07-diagram.md](07-diagram.md) | Draw.io diagram generation (both features) |
+| [08-example.md](08-example.md) | Complete end-to-end walkthrough |

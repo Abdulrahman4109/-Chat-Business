@@ -1,86 +1,73 @@
 # AI Pipeline
 
-The data processing pipeline converts raw user text into structured financial data and a goal timeline.
+Two-stage extraction pipeline: fast regex heuristic first, LLM fallback when heuristic can't classify all fields.
 
 ## Stage 1: Text Normalization
 
-All user messages pass through `heuristics.normalize_text()` before LLM processing:
+`heuristics.normalize_text()` runs on every input:
+1. **Digit conversion**: Arabic-Indic (٠-٩), Persian (۰-۹) → 0-9
+2. **Detach numbers**: Insert space between non-Latin text and adjacent digits
 
-1. **Digit conversion**: Non-Western digit systems (Arabic-Indic, Persian, etc.) → 0-9
-2. **Text/digit separation**: Inserts spaces between non-Latin script characters and adjacent digits — e.g., text with attached numbers like `text123text456` becomes `text 123 text 456`
-3. **No modification to**: `k`/`m` suffixes, thousands separators, decimal points, currency symbols
+No modification to: `k`/`m` suffixes, thousands separators, decimal points, currency symbols.
 
-This normalization happens at both ends: before sending to the LLM and when parsing LLM responses.
+## Stage 2: Hybrid Extraction
 
----
+### Heuristic First (`heuristic_classify`)
+Regex patterns match financial keywords in Arabic + English (see `heuristics.py` patterns):
+- Goal: عاوز/عايز/اريد/نفسي + object + ب/تمن/سعر/قيمة/ثمن
+- Income: مرتب/راتب/قبض/أجر/دخل/salary
+- Expenses: مصاريف/إيجار/فواتير/expenses
+- Savings: معايا/عندي/معي/مدخرات/savings/have
+- Debts: ديون/قروض/عليا/debts/loans
+- Extra: حوافز/مكافآت/اضافي/commission/bonus
 
-## Stage 2: Guided Extraction (Financial Agent)
+Each pattern finds the closest number + time unit multiplier (weekly×4.2857, daily×30, yearly÷12, biweekly×2.1429).
 
-The `FinancialAgentPipeline` manages a conversation state machine:
+### LLM Fallback
+If `is_ready_for_calculation()` returns False after heuristic, calls LLM with `PROCESS_INPUT_PROMPT`:
+- Defines each field by meaning (not name)
+- Time unit normalization rules
+- Returns JSON with all fields nullable
 
-### Initial Extraction
-Sends the user's message to the LLM with a prompt that defines fields by meaning:
-- **goal**: target amount (price, target, goal, purchase)
-- **monthly_income**: main salary or income
-- **monthly_expenses**: regular spending
-- **current_savings**: assets already owned
-- **current_debts**: amounts owed
-- **extra_income**: additional income (bonuses, commissions, side gigs)
+## Stage 3: State Machine (`/chat` pipeline)
 
-### Time Unit Normalization
-The LLM normalizes time values to monthly equivalents:
-- If a time unit is mentioned (weekly, daily, yearly) → convert to monthly (weekly ×4.2857, daily ×30, yearly ÷12)
-- If no time unit — assume already monthly
+1. **New message** → if heuristic detects financial data → reset all fields → `process_input` (heuristic → LLM). Non-financial messages (e.g. "hello") don't reset state
+2. **Answer to question** → `update_data` — extract value from Yes/No answer
+3. **Check completeness** — all 6 fields must be non-None
+4. **If incomplete** → `generate_question` — pick next unanswered field, set question type:
+   - `ask_value` for income (direct number input)
+   - `yesno` for expenses/savings/debts/extra
+   - `restore_context` when previous session detected
+5. **If complete** → `calculate_goal()` → result
 
-### Completeness Check
-After extraction, each field is checked. Required: goal, income, expenses. Optional: savings, debts, extra income. All fields must be non-null before completion.
+### Language Detection
+`_detect_language()` checks Unicode block of conversation messages. Questions, labels, and result formatting switch between English and Arabic accordingly.
 
-### Follow-up Questions
-When fields are missing, the system asks a yes/no question in order:
-1. Expenses → 2. Savings → 3. Debts → 4. Extra Income
+## Stage 4: Calculation
 
-The user answers with "Yes, {amount}" or "No". The LLM extracts the value and normalizes time units.
-
-### Answer Extraction
-- "No" / negation → value = 0
-- "Yes, {number}" with no time unit → value = {number} (assumed monthly)
-- "Yes, {number} weekly/daily/yearly" → normalized to monthly
-
----
-
-## Stage 3: Calculation
-
-Formula:
-```
+```python
 net_savings = (income + extra) - expenses
 effective_savings = max((savings or 0) - (debts or 0), 0)
 remaining = max(goal - effective_savings, 0)
-months = ceil(remaining / net_savings)
+months = ceil(remaining / net_savings) if net_savings > 0
 ```
 
 ### Edge Cases
-
 | Condition | Result |
 |-----------|--------|
-| No goal amount | Unachievable |
-| Already have enough savings | "Already funded" (months = 0) |
-| Net savings ≤ 0 | Unachievable, suggests expense reduction |
-| Debts present | Debts reduce effective savings (savings - debts) |
-| Goal achievable | Human-readable duration (months/years) |
+| No goal | Unachievable, suggest target |
+| Remaining ≤ 0 | "Already funded" (months = 0) |
+| Net savings ≤ 0 | Unachievable, suggest expense reduction |
+| Debts present | Reduce effective savings |
 
-### Suggestions
-Up to 3 tips returned with every calculation:
-1. Reserve the net savings amount monthly
-2. If timeline > 12 months: small income increase or expense reduction helps
-3. If expenses > 60% of income: review fixed costs
+### Suggestions (max 3)
+1. Reserve net savings monthly
+2. If >12 months: small increase helps
+3. If expenses >60% of income: review fixed costs
 4. If multiple goals: prioritize one at a time
 
----
+**Output**: Bilingual (`format_duration` / `format_duration_ar`) with years, months, days.
 
-## Stage 4: Background Storage
+## Stage 5: Background Storage
 
-After the response is sent, storage runs asynchronously:
-1. Save `ChatRecord` (user message + assistant message + data) to local JSON
-2. Save `ChatRecord` to remote API (best-effort, failures logged but ignored)
-
-Storage never blocks the response.
+`asyncio.create_task` — never blocks the response. Saves ChatRecord to local JSON + remote Mujarrad API.

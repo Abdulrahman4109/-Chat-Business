@@ -1,72 +1,71 @@
 # Frontend
 
-React 19 application using Vite, no router, no state management library — just hooks.
+React 19 + Vite (port 5173, proxy → 8001). No router. No CSS framework.
 
-## Components
+## App State
 
-### `App` (root)
-**State:**
 | Variable | Type | Purpose |
 |----------|------|---------|
-| `userId` | string | Current user |
+| `userId` | string | `crypto.randomUUID()` persisted in localStorage |
 | `conversationId` | string? | Active conversation (null = new) |
-| `messages` | array | Chat messages for active conversation |
-| `input` | string | Text input |
-| `history` | array | Past conversations |
-| `loading` | bool | Waiting for backend |
-| `pendingYesNo` | object? | Current yes/no question: `{ field, text }` |
+| `messages` | array | Current conversation messages |
+| `history` | array | Past conversations from `/history` |
+| `historyOpen` | bool | Sidebar visibility |
+| `loading` | bool | Request in progress |
+| `pendingYesNo` | object? | Yes/No prompt: `{ field, text, waitingValue? }` |
+| `pendingAskValue` | object? | Value input prompt: `{ field, text }` |
+| `askValueInput` | string | Input for `ask_value` questions |
+| `yesValueInput` | string | Input for Yes-then-value |
+| `diagramOpen` | bool | Diagram modal visibility |
+| `diagramLoading` | bool | iframe spinner state |
+| `confirmDeleteId` | string? | Conversation pending deletion confirm |
 | `abortRef` | ref | `AbortController` for cancel |
-
-### `Message` (child)
-Renders a single chat bubble. If the message contains `extracted_data` and `calculation`, shows:
-- **Analysis grid**: income, expenses, net savings (with debt indicator if applicable)
-- **Result panel**: timeline duration, achievability, suggestions
-- **"View Financial Plan" button**: opens the diagram modal (see 07-diagram.md)
-
-If `extracted_data` exists but `is_complete` is false, only the text is shown (no grid).
-
-### `Metric` (child)
-Displays a labeled value row. Returns `null` for `null`/`undefined` values — unmentioned fields are invisible.
+| `diagramXmlRef` | ref | Current XML (survives re-renders for postMessage) |
 
 ## Chat Flow
 
-### Send Message
-1. Create `AbortController` for cancellation
-2. POST `/chat` with message, userId, conversationId
-3. If `is_complete: false`:
-   - Show assistant message text
-   - Show Yes/No buttons
-   - On Yes: show inline input for the value
-   - On No: automatically send "No" as next message
-4. If `is_complete: true`:
-   - Show assistant message + analysis grid + result
-   - Hide Yes/No buttons
-5. On error or abort: show error state, re-enable input
+1. **User types** → `sendChat(text)` — creates optimistic user message, POST `/chat`
+2. **Response handling**:
+   - `is_complete: true` → show assistant text + analysis grid + result panel + "View Financial Plan" button
+   - `question_type: "yesno"` → show Yes/No buttons; Yes opens inline value input
+   - `question_type: "ask_value"` → show inline number input
+   - `question_type: "restore_context"` → Yes restores previous session, No starts fresh
+3. **Cancel** → `cancelRequest()` calls `abortRef.current.abort()`, clears loading
 
-### Cancel
-Shows a cancel button during `loading`. Clicking it aborts the fetch via `AbortController`.
+### Analysis Grid
+Rendered inside `Message` when `extracted_data` exists with `is_complete`. Shows up to 7 `Metric` rows (Goal, Income, Expenses, Savings, Debts, Net Savings, Extra). Null fields hidden. 5-column grid on desktop → 2 columns ≤860px.
+
+### Metric Component
+Returns `null` for `null`/`undefined` values. Formats with `Intl.NumberFormat` (0 decimals).
 
 ## History Sidebar
-- Groups conversations by `conversation_id`
-- Most recent first
-- Each entry shows the first user message as the title
-- Click to resume a past conversation
-- GET `/history` on page load
+
+- Toggled by hamburger icon in top bar
+- Groups conversations by `conversation_id` (deduped via `useMemo`), sorted by latest message
+- Each entry shows first user message as title
+- **Long-press (200ms)** or **right-click** reveals delete confirmation
+- Click to restore conversation (rebuilds messages + pending prompts from last state)
+
+## Diagram Modal (Draw.io Integration)
+
+1. User clicks "View Financial Plan" → POST `/diagram` → store XML → open iframe
+2. Load `https://embed.diagrams.net?embed=1&ui=dark&save=1&proto=json`
+3. **postMessage protocol**:
+   - `init` from draw.io → reply `{ action: "load", xml: diagramXmlRef.current }`
+   - `load` from draw.io → hide spinner
+   - `save` from draw.io → POST `/diagram/save` with XML
+4. Strict origin validation: only `*.diagrams.net`, `*.draw.io`
+5. Full-screen on mobile (≤860px), 90vw×90vh on desktop
 
 ## Styling
+
 | Variable | Value |
 |----------|-------|
-| `--bg` | `#02000F` |
-| `--primary` | `#541288` |
-| `--accent` | `#A582B1` |
-| `--text` | `#F5F5F5` |
+| `--bg` | `#070511` |
+| `--bg-2` | `#12082A` |
+| `--primary` | `#8E3DFF` |
+| `--accent` | `#B56CFF` |
+| `--text` | `#F3EEFF` |
+| `--text-muted` | `#C9A4FF` |
 
-- Dark theme via CSS variables
-- Responsive breakpoint at 860px
-- No CSS framework — all custom
-
-## Diagram Modal
-- Embedded iframe loading `https://embed.diagrams.net`
-- Cross-origin messaging: `postMessage` API
-- Only accepts messages from `*.diagrams.net`, `*.draw.io`
-- Save button in draw.io triggers a POST to `/diagram/save`
+Yes/No buttons: green-tinted (Yes), red-tinted (No). Dark semi-transparent bubbles with purple border/glow. Responsive breakpoint at 860px.

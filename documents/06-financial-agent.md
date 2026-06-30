@@ -1,99 +1,97 @@
 # Financial Agent — State Machine
 
-The `FinancialAgentPipeline` manages the guided conversation. Each conversation has a state that progresses from extraction → question → answer → calculation.
+The `FinancialAgentPipeline` manages a guided conversation. Each conversation has a `FinancialAgentState` that progresses through extraction, questions, answers, and final calculation.
 
 ## State (`FinancialAgentState`)
 
-Persisted per conversation in memory (dictionary keyed by `conversation_id`):
+In-memory dict (`guided_sessions`) keyed by `conversation_id`. Never cleaned.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `goal` | float? | Target amount |
-| `monthly_income` | float? | Main income |
-| `monthly_expenses` | float? | Regular expenses |
-| `current_savings` | float? | Existing savings |
-| `current_debts` | float? | Outstanding debts |
-| `extra_income` | float? | Additional income |
-| `is_complete` | bool | All required fields collected |
-| `messages` | array | Message history for LLM context |
-| `result` | CalculationResult? | Final timeline |
+| Field | Type | Notes |
+|-------|------|-------|
+| `session_id` | string | UUID |
+| `goal`, `monthly_income`, `monthly_expenses` | float? | Required fields |
+| `current_savings`, `current_debts`, `extra_income` | float? | Optional fields |
+| `is_complete` | bool | Starts False |
+| `latest_question` | string | Current question text (bilingual) |
+| `question_type`, `question_field` | string | "yesno" / "ask_value" / "restore_context" |
+| `asked_fields` | list[str] | Avoid re-asking |
+| `messages` | list[dict] | Conversation history for LLM context |
+| `result` | dict? | Serialized CalculationResult |
+| `previous_context` | dict? | Previous session data for restore prompt |
+| `goal_description` | str | Natural language goal description |
 
 ## Pipeline Methods
 
-### `process_input(normalized_text)`
-
-Called on the first message of a conversation. Sends the user text to the LLM with `PROCESS_INPUT_PROMPT` which defines each field by meaning (not by name).
-
-The LLM returns a JSON blob:
-```json
-{
-  "goal_price": 800000,
-  "monthly_income": 15000,
-  "monthly_expenses": null,
-  "current_savings": null,
-  "current_debts": null,
-  "extra_income": 0,
-  "segments": [{"type": "goal", "text": "...", "numbers": [800000]}]
-}
-```
-
-`null` means the user didn't mention it. `0` means explicitly zero.
-
-After parsing, `heuristics.apply_intelligent_defaults()` ensures zero for nil values used in calculation while preserving null for UI visibility.
-
-### `check_completeness(state)`
-
-Returns `(all_fields: bool, missing: list)`.
-
-Required fields: goal, income, expenses. All must be non-null.
-
-Optional fields: savings, debts, extra_income. Also checked but not strictly required — however, the agent still asks for them to provide a complete picture.
+### `process_input(state, message)`
+1. Run `heuristic_classify(message)` — regex-based extraction
+2. Check `is_ready_for_calculation()` — if all 6 fields found, skip LLM
+3. If incomplete, call LLM with `PROCESS_INPUT_PROMPT` to extract remaining fields
+4. Normalize time units to monthly
 
 ### `generate_question(state)`
+Iterates `FIELD_ORDER` for first missing field:
+```
+['monthly_income', 'monthly_expenses', 'current_savings', 'current_debts', 'extra_income']
+```
 
-Uses a fixed order based on missing fields:
-1. monthly_expenses → "Do you have any monthly expenses?"
-2. current_savings → "Do you have any current savings?"
-3. current_debts → "Do you have any current debts or loans?"
-4. extra_income → "Do you have any additional income or bonuses?"
+For each field, checks `QUESTION_TYPES` map to determine prompt style:
+- `monthly_income` → `ask_value` (direct number input)
+- `monthly_expenses`, `current_savings`, `current_debts`, `extra_income` → `yesno`
 
-Returns a `ChatResponse` with `question_type: "yesno"`, `question_field: "<field_name>"`.
+Questions from `FIELD_QUESTIONS` dict, bilingual (en/ar keys). Language detected by `_detect_language()` — checks Unicode block of conversation messages.
 
-### `update_data(state, user_message)`
+### `update_data(state, answer)`
+Handles three question types:
+- **`restore_context`**: "Yes" → restore previous field values from `previous_context`; "No" → continue fresh
+- **`yesno`**: "No"/negation → value = 0; "Yes, {number}" → extract with time unit normalization
+- **`ask_value`**: Extract number directly from answer
 
-Called when the user responds to a yes/no question. Sends the response to the LLM with `UPDATE_DATA_PROMPT` which extracts the value.
+Uses `extract_number_mentions()` + `_extract_time_unit()` for value extraction. Negation detection via regex (لا/ليس/ما عندي/no/none/don't have).
 
-The prompt handles:
-- Negation ("No", "None", "I don't have") → sets value to `0`
-- Affirmative with value ("Yes, 5000") → extracts the number
-- Affirmative without value ("Yes" alone) → leaves as null (will re-ask)
-- Time units: "500 weekly" → normalize to monthly (~2143)
+### `check_completeness(state)`
+All 6 fields must be non-None. `monthly_income`, `monthly_expenses`, `goal` are required; the rest are asked but not strictly required (still set to None if user declines).
 
-### `run_orchestrator(state, user_message)`
+## Orchestrator Flow
 
-Main entry point. Logic:
-1. If first message → `process_input()`
-2. If answering a question → `update_data()`
-3. Always → `check_completeness()`
-4. If incomplete → `generate_question()` → return with `is_complete: false`
-5. If complete → `calculate_goal()` → return with `is_complete: true`
+```
+run_orchestrator(state, message):
+  1. IF question_type is set (expecting answer):
+       update_data(state, message)
+  2. ELSE (new message with financial data):
+       reset all financial fields → process_input(state, message)
+     (non-financial messages don't reset state)
+  3. check_completeness(state)
+  4. IF complete:
+       calculate_goal(data) → store result
+       append assistant message with formatted result (bilingual)
+       set is_complete = True
+  5. IF incomplete:
+       generate_question(state)
+       append assistant message with question text + metadata
+```
+
+**Important**: When a new user message contains financial data (detected by heuristic regex), ALL financial fields are reset to None before `process_input`. This prevents stale data from a previous turn. Non-financial messages (greetings, casual chat) skip the reset.
+
+## Session Restoration (`_restore_session` in main.py)
+
+When a user returns to an existing `conversation_id`:
+1. Fetch ChatRecords from history
+2. Extract last `FinancialData` and `CalculationResult`
+3. Build `previous_context` dict with all field values
+4. Set `question_type = "restore_context"` to ask "Would you like to restore your previous data?"
+5. If user says Yes → populate all fields from context; if No → start fresh
 
 ## Prompts
 
 ### PROCESS_INPUT_PROMPT
-- Defines each field clearly
-- Instructs the LLM to normalize time units to monthly
-- Requests segments (text classification by type: goal, income, expense, etc.)
-- Explicit mention: if no time unit is specified, assume monthly
+Single prompt defining all 6 fields by meaning with multilingual examples:
+- goal: target price to BUY (عاوز/عايز/اريد + object + ب/تمن/سعر)
+- monthly_income: main recurring salary (مرتب/راتب/قبض)
+- monthly_expenses: regular spending (مصاريف/إيجار/فواتير)
+- current_savings: money ALREADY OWNED (معايا/عندي/معي)
+- extra_income: extra recurring (حوافز/مكافآت/اضافي)
+- current_debts: amounts OWED (ديون/قروض/عليا)
 
-### UPDATE_DATA_PROMPT
-- Understands the context of the question being asked
-- Normalizes time values to monthly
-- Recognizes negation patterns across languages
-- Returns only the field value being asked about
+"منهم/منها" after possession = savings toward goal. Returns JSON, all fields nullable.
 
-## Session Management
-
-States are stored in a dictionary `_sessions: dict[str, FinancialAgentState]`.
-
-States are never cleaned (intended for a stateless API facade — in production, use a proper database).
+No `UPDATE_DATA_PROMPT` exists — `update_data` uses regex-based extraction directly, no LLM call.
