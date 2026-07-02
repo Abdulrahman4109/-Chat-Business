@@ -29,45 +29,33 @@ The system receives the text and unifies number formats:
 
 ---
 
-## Step 3 — Extract Numbers by Regex
+## Step 3 — Regex Extraction
 
-The system searches the text for numbers using regex patterns:
+The system searches the text for numbers using regex patterns and classifies them into financial fields.
 
-1. **Extract all numbers**:
-   - Integers
-   - Decimals
-   - Numbers with suffixes (k, million, thousand)
-   - Currencies and comma-separated numbers
+1. **Extract all numbers** including integers, decimals, currencies, suffixes, and comma-separated values
+2. **Classify numbers by field** — goal price, monthly income, expenses, savings, debts, extra income
 
-2. **Classify numbers by field**:
-   - Is this number the **goal** (price)?
-   - Is it **monthly income** (salary)?
-   - Is it **expenses**?
-   - Is it **savings**?
-   - Is it **debts**?
-   - Is it **extra income**?
+Regex is a helper step. It provides initial values but does not decide whether the data is complete.
 
-3. **Completeness check**:
-   - If all six fields are found → skip the next stage
-   - If any field is missing → proceed to AI
-
-**Result**: Some fields are filled, others remain empty.
+**Result**: Some fields may have values from regex. Others remain empty.
 
 ---
 
-## Step 4 — AI Extraction
+## Step 4 — LLM Extraction
 
-If the previous stage failed to find all fields, the system calls the AI:
+The LLM is the primary extraction method. It receives the user's text and extracts all six financial fields.
 
-1. **Build instructions for the AI**: Each field is defined in both Arabic and English with its meaning clarified
+1. **Build instructions for the LLM**: Each field is defined in both Arabic and English with its meaning clarified
+2. **Send the text to the LLM**: Through a model chain (primary model, then fallback if the first fails)
+3. **Normalize time units**: Weekly → multiply by 4.2857, yearly → divide by 12, no unit → assume monthly
+4. **Merge with regex results**: LLM results are added to regex results (regex values are kept when both exist)
 
-2. **Send the text to the AI**: Through a model chain (primary model, then fallback if the first fails)
+**After LLM extraction**, the system performs a **completeness check**:
+- If all six fields are non-null → proceed directly to calculation
+- If any field is missing → proceed to questions
 
-3. **Normalize time units**: If the user says "weekly", multiply by 4.2857. If "yearly", divide by 12. If no unit is specified, the value is assumed to be monthly.
-
-4. **Merge results**: AI results are added to the previous stage's results (they do not replace them)
-
-**Result**: More fields are filled, but some may still be missing.
+**Result**: Most fields are filled. Any remaining null fields will be asked next.
 
 ---
 
@@ -145,7 +133,7 @@ The system builds the response and sends it to the frontend:
 
 **Result**: The user sees the result immediately while storage happens in the background.
 
-
+---
 
 ## Summary
 
@@ -153,10 +141,10 @@ The system builds the response and sends it to the frontend:
 |------|----------|----------------|
 | 1. Send message | User describes the goal | No |
 | 2. Text normalization | Unify number formats | No |
-| 3. Regex + LLM extraction | Find and classify numbers | Yes |
-| 4. AI extraction | Find missing fields | Yes |
+| 3. Regex extraction | Find and classify numbers | No |
+| 4. LLM extraction + completeness check | Extract all fields, check if complete | Yes |
 | 5. AI asks questions | Ask about missing fields | Yes |
 | 6. Calculation | Calculate the timeline | No |
 | 7. Response and storage | Return result + save | No |
 
-AI is used in Steps 4 and 5. However, from the user's perspective, everything is done by AI.
+LLM extraction (Step 4) is the core. Regex (Step 3) is a helper. If LLM finds all fields, questions (Step 5) are skipped.
