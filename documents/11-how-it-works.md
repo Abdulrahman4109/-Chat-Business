@@ -145,19 +145,7 @@ The system builds the response and sends it to the frontend:
 
 **Result**: The user sees the result immediately while storage happens in the background.
 
----
 
-## Step 8 — Diagram (Optional)
-
-The user can request a diagram showing the financial plan:
-
-- **Row 1**: Cash flow (Income → Expenses → Net Savings)
-- **Row 2**: Goal progress (Savings → Goal → Remaining → Timeline)
-- **Colors**: Purple for income, pink for expenses, green for achievable results
-
-The diagram opens in the draw.io editor where it can be modified and saved.
-
----
 
 ## Summary
 
@@ -167,9 +155,8 @@ The diagram opens in the draw.io editor where it can be modified and saved.
 | 2. Text normalization | Unify number formats | No |
 | 3. Regex extraction | Find and classify numbers | No |
 | 4. AI extraction | Find missing fields | Yes |
-| 5. Follow-up questions | Ask about missing fields | No |
+| 5. AI asks questions | Ask about missing fields | Yes |
 | 6. Calculation | Calculate the timeline | No |
 | 7. Response and storage | Return result + save | No |
-| 8. Diagram | Generate draw.io roadmap | No |
 
-AI is only used in Step 4 (when regex cannot find all fields). All other steps are local and free.
+AI is used in Steps 4 and 5. All other steps are local and free.
