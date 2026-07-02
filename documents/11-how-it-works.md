@@ -71,9 +71,9 @@ If the previous stage failed to find all fields, the system calls the AI:
 
 ---
 
-## Step 5 — Financial Agent Asks Questions
+## Step 5 — AI Asks Questions
 
-If fields are still missing, the Financial Agent (conversational state machine) takes over and asks the user one field at a time. The agent tracks which fields have been asked, stores answers, and decides what to ask next based on the current state.
+If fields are still missing, the AI asks the user one field at a time. It tracks which fields have been asked, stores answers, and decides what to ask next.
 
 **Question order**:
 1. **Monthly expenses**: "Do you have any monthly expenses?" (Yes/No + value)
