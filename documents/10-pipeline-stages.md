@@ -219,9 +219,9 @@ Maximum 3 suggestions from the following pool:
 |-------|-----------|------|---------|-----------------|
 | 1. Normalization | `heuristics.py` | Free | <1ms | No |
 | 2. Heuristic Extraction | `heuristics.py` | Free | <5ms | No |
-| 3. LLM Extraction | `llm_chain.py` + prompts | ~$0.001 | ~1-3s | Yes |
+| 3. LLM Extraction | `llm_chain.py` + prompts | Free | ~1-3s | Yes |
 | 4. State Machine | `financial_agent/pipeline.py` | Free | <1ms | No |
 | 5. Calculation | `calculator.py` | Free | <1ms | No |
 | 6. Output & Storage | `main.py` + `storage.py` | Varies | <1ms (+ async) | No |
 
-The only costly call is Stage 3 (LLM). All other stages are local and free. In simple cases (where the heuristic covers all fields), Stage 3 is skipped entirely, resulting in <10ms response time.
+All stages are free (using free-tier OpenRouter models). In simple cases where the heuristic covers all fields, Stage 3 is skipped entirely, resulting in <10ms response time.
