@@ -25,24 +25,23 @@ chat/
 │   │   ├── nlp.py                        # Regex + optional spaCy extraction
 │   │   ├── openai_service.py             # Legacy extraction (used by /analyze)
 │   │   ├── segmenter.py                  # Text splitting
+│   │   ├── llm_chain.py                  # Model fallback chain (OpenRouter)
 │   │   ├── diagram_generator.py          # Draw.io XML generation
 │   │   ├── storage.py                    # Local + remote persistence
 │   │   ├── financial_agent/              # Guided conversation state machine
 │   │   │   ├── models.py
 │   │   │   ├── pipeline.py
 │   │   │   └── prompts.py
-│   │   └── system_builder/              # Separate system design feature
 │   ├── scripts/                          # Training data generation
-│   └── tests/                            # 96 tests
+│   └── tests/                            # 169 tests
 ├── frontend/
 │   ├── package.json                      # React 19, Vite, lucide-react
 │   ├── index.html
 │   ├── vite.config.js                    # Proxy to 8001
 │   └── src/
 │       ├── main.jsx                      # App, Message, Metric components
-│       ├── system-builder/               # Separate system builder UI
 │       └── styles.css                    # Dark theme
-└── documents/                            # 8 markdown docs
+└── documents/                            # 11 markdown docs
 ```
 
 ## Core Endpoints (`main.py`)
@@ -56,19 +55,18 @@ chat/
 | `/diagram/save` | POST | Persist edited diagram |
 | `/diagram/load` | GET | Load saved diagram |
 | `/history` | GET | Past conversations for a user |
-| `/system-builder/chat` | POST | System design conversation |
-| `/system-builder/roi/save` | POST | Save ROI data |
 | `/health` | GET | Liveness check |
 | `/mujarrad/status` | GET | Storage connection status |
 
 ## `/chat` Pipeline
 
 1. **Normalize**: `heuristics.normalize_text()` — converts non-Western digits (Arabic-Indic, Persian, etc.) to 0-9; inserts spaces between letters and attached digits
-2. **Process**: LLM extracts all mentioned fields from the message using `PROCESS_INPUT_PROMPT` — normalizes time units to monthly equivalents
-3. **Check completeness**: all fields (goal, income, expenses, savings, debts, extra) must be non-null
-4. **If incomplete**: return `question_type: "yesno"` with field name; user answers Yes/No with optional value
-5. **If complete**: calculate timeline via `calculator.calculate_goal()`
-6. **Store**: background `asyncio.create_task` saves ChatRecord to local JSON + remote API (never blocks response)
+2. **Regex**: `heuristic_classify()` extracts and classifies numbers into fields (helper step)
+3. **LLM**: Extracts all remaining fields via `chain_call()` with `PROCESS_INPUT_PROMPT` — normalizes time units to monthly equivalents
+4. **Completeness check**: all fields (goal, income, expenses, savings, debts, extra) must be non-null
+5. **If incomplete**: return `question_type: "yesno"` with field name; user answers Yes/No with optional value
+6. **If complete**: calculate timeline via `calculator.calculate_goal()`
+7. **Store**: background `asyncio.create_task` saves ChatRecord to local JSON + remote API (never blocks response)
 
 ### Calculation Formula
 ```
@@ -148,9 +146,6 @@ Per-conversation state stored in `guided_sessions: dict[str, FinancialAgentState
 ### Session Cleanup
 States are never cleaned (in-memory dictionary). For production, use a database.
 
-### System Builder (`system_builder/`)
-Separate feature for designing financial systems. Has its own state, pipeline, models, and `/system-builder/*` endpoints.
-
 ## Text Normalization (`heuristics.py`)
 
 - `normalize_text()`: Converts all non-Western digits to 0-9; inserts space between non-Latin script characters and attached digits
@@ -182,9 +177,7 @@ Edge cases:
 | `save_chat_record()` | Local JSON + async POST to `chat` space |
 | `save_segment_node()` | Async POST to `example` space (legacy) |
 | `save_diagram_node()` | Async POST to `graph` space |
-| `save_roi_node()` | Async POST to `roi` space |
 | `get_diagram_node()` | GET from `graph` space |
-| `get_roi_node()` | GET from `roi` space |
 | `get_history()` | Local first → remote (paginated, 50/size) → replace local on success |
 | `check_connection()` | Health check via minimal GET |
 
@@ -194,7 +187,6 @@ Edge cases:
 | `chat` | `/spaces/chat` | Chat history |
 | `example` | `/spaces/example` | Segment nodes (legacy) |
 | `graph` | `/spaces/graph` | Diagram XML |
-| `roi` | `/spaces/roi` | ROI calculations |
 
 All remote saves are best-effort (failures logged, never raise). Auth via `X-API-Key` + `X-API-Secret` headers.
 
@@ -212,14 +204,14 @@ All remote saves are best-effort (failures logged, never raise). Auth via `X-API
 ## Frontend (`main.jsx`)
 
 ### Components
-- **App**: Root — manages state, chat flow, Yes/No buttons, diagram modal, history sidebar, mode toggle (chat / system-builder)
+- **App**: Root — manages state, chat flow, Yes/No buttons, diagram modal, history sidebar, mode toggle (chat)
 - **Message**: Bubble with text + optional analysis grid + optional result panel + optional "View Financial Plan" button
 - **Metric**: Label + formatted value row; returns null for null/undefined
 
 ### State
 | Variable | Type | Purpose |
 |----------|------|---------|
-| `mode` | "chat" \| "system-builder" | App mode |
+| `mode` | "chat" | App mode |
 | `userId` | string | Persistent (localStorage) |
 | `conversationId` | string? | Active conversation |
 | `messages` | array | Current conversation |
@@ -253,11 +245,12 @@ Produces `mxGraphModel` XML with two rows:
 
 Color scheme: income (purple #8E3DFF), expenses (pink #E35CFF), assets (light purple #C9A4FF), result (based on achievability).
 
-## Tests (96)
+## Tests (169)
 
 | File | Tests | Scope |
 |------|-------|-------|
-| `test_calculator.py` | 10 | Math, formatting, suggestions, edge cases |
+| `test_calculator.py` | 18 | Math, formatting, suggestions, edge cases |
+| `test_field_classification.py` | 65 | Heuristic + LLM classification |
 | `test_financial_agent.py` | 11 | Normalization, pipeline logic |
 | `test_heuristics.py` | 24 | Number extraction, digit conversion, defaults |
 | `test_models.py` | 10 | Defaults, validation, serialization |
@@ -285,5 +278,4 @@ npm run build    # output → dist/
 - spaCy is optional (`en_core_web_sm` lazy-loaded, not in requirements.txt) — regex works without it
 - Vite proxy targets port 8001 (not 8000)
 - Storage module has no dedicated tests due to async/API complexity
-- System Builder is a separate feature with its own pipeline and endpoints under `/system-builder/*`
-- Documents are in `documents/` directory: 00-overview through 07-diagram
+- Documents are in `documents/` directory: 00-overview through 11-how-it-works
