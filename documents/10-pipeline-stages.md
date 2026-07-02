@@ -67,24 +67,17 @@ Each stage consumes the output of the preceding stage. If all fields are satisfi
 
 **Processing** — `heuristic_classify()` in `heuristics.py`:
 
-1. **Extract all numbers** from text via `extract_number_mentions()`:
-   - Integers: 50000, 800000
-   - Decimals: 4.5, 3.14
-   - Numbers with suffixes: 5k, 2million, 3thousand
-   - Currencies: $500, 1000SAR
-   - Thousands-separated: 1,000,000
+ 1. **Extract all numbers** from text via `extract_number_mentions()` — handles integers, decimals, currencies, suffixes, and thousands separators
 
-2. **Classify numbers into fields** by matching regex patterns:
-   - `goal_price` ← goal keywords (want/buy/car/house) + price keywords (worth/for/price/ب/تمن/بقيمة)
-   - `monthly_income` ← income keywords (salary/earn/income/راتب/مرتب/دخل)
-   - `monthly_expenses` ← expense keywords (expenses/spend/rent/مصاريف/إيجار/فواتير)
-   - `current_savings` ← savings keywords (have/saved/savings/معايا/عندي/معي/وفرت)
-   - `current_debts` ← debt keywords (debt/loan/owe/ديون/قروض/عليا/مستلف)
-   - `extra_income` ← extra income keywords (bonus/extra/حوافز/مكافآت/اضافي/عمولة)
+ 2. **Classify numbers into fields** by matching regex patterns:
+   - `goal_price`
+   - `monthly_income`
+   - `monthly_expenses`
+   - `current_savings`
+   - `current_debts`
+   - `extra_income`
 
-3. **Determine whether each field is null or 0** based on sentence context
-
-4. **Early completeness check** via `is_ready_for_calculation()`:
+ 3. **Early completeness check** via `is_ready_for_calculation()`:
    - If all six fields are found with non-null values → skip the LLM stage entirely
    - If any field is missing → proceed to the LLM stage
 
@@ -100,24 +93,14 @@ Each stage consumes the output of the preceding stage. If all fields are satisfi
 
 **Processing** — `process_input()` → LLM call with `PROCESS_INPUT_PROMPT`:
 
-1. **Build the prompt** with field definitions in both Arabic and English:
-   - Goal: target price for something the user wants to buy
-   - Monthly income: main recurring salary
-   - Monthly expenses: regular spending
-   - Current savings: money already owned
-   - Current debts: amounts owed
-   - Extra income: bonuses, commissions, side gigs
+ 1. **Build the prompt** with field definitions in both Arabic and English
 
 2. **Send to the LLM** via the model chain (`chain_call()`):
    - Primary model: gpt-4o-mini via OpenRouter
    - Fallback model: openrouter/free
    - If all fail: heuristic values only are used
 
-3. **Normalize time units** to monthly equivalents:
-   - Weekly → × 4.2857 (average weeks per month)
-   - Daily → × 30
-   - Yearly → ÷ 12
-   - No unit → assumed monthly
+ 3. **Normalize time units** to monthly equivalents (weekly, daily, yearly — or assume monthly if unspecified)
 
 4. **Merge results**: LLM results merge with heuristic results (they do not replace them)
 
@@ -191,11 +174,7 @@ months              = ceil(remaining / net_monthly_savings)   (if net_savings > 
 - **Income is null** → unachievable (cannot calculate without income)
 
 ### 5.3 — Duration Formatting (`format_duration`)
-- Convert months to a bilingual format:
-  - "5 months" / "٥ أشهر"
-  - "1 year" / "سنة واحدة"
-  - "2 years and 3 months" / "سنتان و ٣ أشهر"
-  - "less than a month" / "أقل من شهر"
+- Convert months to a bilingual display string (e.g. "3 years and 5 months" / "٣ سنوات و ٥ أشهر")
 
 ### 5.4 — Suggestion Generation (`build_suggestions`)
 Maximum 3 suggestions from the following pool:
