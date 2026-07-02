@@ -229,74 +229,12 @@ Maximum 3 suggestions from the following pool:
 ## Complementary Systems
 
 The six-stage pipeline above describes the core chat flow. This section covers all other systems that complete the full project architecture.
-
 ---
 
-## 7 — Agents Mode (Financial Smart Extractor)
+## 7 — LLM Model Chain Infrastructure
+**Component**: `backend/app/llm_chain.py` → `chain_call()`
 
-A separate pipeline for extracting financial entities and relationships from text and files.
-
-**Component**: `backend/app/agents/` package (8 files)
-
-**Endpoints**: `/api/agents/process`, `/api/agents/upload`, `/api/agents/history`, `/api/agents/files/{file_id}`
-
-### Process Flow
-
-```
-Input (text or file)
-      │
-      ▼
-┌─────────────────┐
-│  Text Extraction │  ← Image → Vision LLM, PDF → PyMuPDF
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│  Mudawin        │  ← LLM extracts entities (7 types)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│  Mudrik         │  ← LLM extracts relationships (7 types)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│  Musghi         │  ← Language detection + summary generation
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│  Storage        │  ← Local JSON + Mujarrad API (background)
-└─────────────────┘
-```
-
-### Stages
-
-#### 7.1 — Text Extraction
-- **Text input**: Used directly (no extraction needed)
-- **Image input**: `extract_text_from_image()` → sends base64 image to Vision LLM (same model chain with image support)
-- **PDF input**: `extract_text_from_pdf()` → PyMuPDF (fitz) extracts text from all pages
-
-#### 7.2 — Entity Extraction (Mudawin)
-LLM prompt extracts 7 financial entity types: person, organization, amount, percentage, date, duration, financial_product. Returns JSON array with IDs, names, types, and original text.
-
-#### 7.3 — Relationship Extraction (Mudrik)
-LLM receives entities + original text, extracts 7 relationship types: pays_to, owed_to, guarantor_for, due_date, interest_rate, duration, purpose. Each includes source, target, direction, and evidence.
-
-#### 7.4 — Orchestrator (Musghi)
-1. Detect language (Arabic Unicode check or English)
-2. Call Mudawin for entities
-3. Call Mudrik for relationships
-4. Generate a bilingual summary via LLM
-5. Return complete `KnowledgeGraph`
-
-#### 7.5 — Storage
-Background save to `~/.mujarrad-chat/agents/<user_id>.json` + Mujarrad API `/spaces/agents`. Uploaded files saved to `~/.mujarrad-chat/uploads/<user_id>/`.
-
----
-
-## 8 — LLM Model Chain Infrastructure
-
-**Component**: `backend/app/llm_chain.py` + `backend/app/agents/llm_client.py`
-
-### Chat Model Chain (`chain_call()` for `/chat`)
+### Model Chain
 - **Primary**: `gpt-4o-mini` (via OpenRouter)
 - **Fallback**: `openrouter/free`
 - **Last resort**: `google/gemma-4-31b-it:free`
@@ -305,24 +243,17 @@ Background save to `~/.mujarrad-chat/agents/<user_id>.json` + Mujarrad API `/spa
 - All fail → return `"{}"` (heuristic values used)
 - No API key set → return `"{}"` immediately
 
-### Agent Model Chain (`agent_chat()` for `/api/agents/*`)
-- **Primary**: `openrouter/free`
-- **Fallback**: `google/gemma-4-31b-it:free`
-- Configurable via `agent_model_chain` env var
-- Same retry/fallback logic
-- `agent_chat_vision()` supports OpenAI-compatible image format (`data:image/...;base64,...`)
-
 ### Client
 - Uses `AsyncOpenAI` client with `temperature=0` (deterministic output)
 - Configurable via `openai_base_url` (default: `https://openrouter.ai/api/v1`)
 
 ---
 
-## 9 — Complete API Endpoints
+## 8 — Complete API Endpoints
 
-All routes are in `backend/app/main.py` (chat mode) and `backend/app/agents/router.py` (agents mode).
+All routes are in `backend/app/main.py`.
 
-### Chat Mode
+### Endpoints
 
 | Method | Route | Purpose | When Used |
 |--------|-------|---------|-----------|
@@ -337,18 +268,9 @@ All routes are in `backend/app/main.py` (chat mode) and `backend/app/agents/rout
 | GET | `/health` | Liveness check | Monitoring |
 | GET | `/mujarrad/status` | Check remote storage connection | Debug |
 
-### Agents Mode
-
-| Method | Route | Purpose |
-|--------|-------|---------|
-| POST | `/api/agents/process` | Extract entities from text |
-| POST | `/api/agents/upload` | Extract entities from file (image/PDF) |
-| GET | `/api/agents/history` | List past agent sessions |
-| GET | `/api/agents/files/{file_id}` | Retrieve uploaded file |
-
 ---
 
-## 10 — Storage System
+## 9 — Storage System
 
 **Component**: `backend/app/storage.py` → `MujarradStorage` class
 
@@ -360,8 +282,6 @@ All data is saved both locally and remotely. Remote is always best-effort.
 | Data | Path | Format |
 |------|------|--------|
 | Chat history | `~/.mujarrad-chat/history.json` | JSON array of ChatRecord |
-| Agent graphs | `~/.mujarrad-chat/agents/<user_id>.json` | JSON array of graph records |
-| Uploaded files | `~/.mujarrad-chat/uploads/<user_id>/<file_id>.<ext>` | Binary files |
 
 #### Remote Storage Spaces
 
@@ -370,8 +290,7 @@ All data is saved both locally and remotely. Remote is always best-effort.
 | `chat` | `/spaces/chat` | Chat records |
 | `example` | `/spaces/example` | Segment nodes (legacy) |
 | `graph` | `/spaces/graph` | Diagram XML |
-| `roi` | `/spaces/roi` | ROI data (legacy System Builder) |
-| `agents` | `/spaces/agents` | Agent graph records |
+| `roi` | `/spaces/roi` | ROI data (legacy) |
 
 ### History Merge Strategy
 1. Load local JSON file
@@ -388,7 +307,7 @@ All data is saved both locally and remotely. Remote is always best-effort.
 
 ---
 
-## 11 — Session Restoration
+## 10 — Session Restoration
 
 **Component**: `main.py` → `_restore_session()`
 
@@ -409,7 +328,7 @@ When a user returns to an existing `conversation_id`:
 
 ---
 
-## 12 — Diagram Generation
+## 11 — Diagram Generation
 
 **Component**: `backend/app/diagram_generator.py` → `generate_financial_roadmap()`
 
@@ -441,14 +360,13 @@ When a user returns to an existing `conversation_id`:
 
 ---
 
-## 13 — Frontend Rendering
+## 12 — Frontend Rendering
 
-**Component**: `frontend/src/main.jsx` + `frontend/src/agents/AgentApp.jsx`
+**Component**: `frontend/src/main.jsx`
 
-### Chat Mode Components
+### Components
 
 #### App (root)
-- Manages mode switching: `chat` / `agents`
 - State: `userId` (localStorage), `conversationId`, `messages`, `history`, `loading`, `pendingYesNo`, `diagramOpen`, etc.
 - Persists `userId` via `crypto.randomUUID()` in localStorage
 
@@ -479,13 +397,6 @@ When a user returns to an existing `conversation_id`:
 - Spinner during load
 - XML held in `useRef` to survive re-renders
 
-### Agents Mode Components
-
-#### AgentApp
-- Process tab: text input + file drop zone (image/PDF) + result grid
-- Result: entities grouped by type + relationships list + summary
-- History sidebar overlay: new session button, X close, click-to-load, hold-to-delete
-
 ### Styling
 | Variable | Value |
 |----------|-------|
@@ -499,7 +410,7 @@ Responsive breakpoint at 860px. No CSS framework.
 
 ---
 
-## 14 — Heuristic + LLM Integration
+## 13 — Heuristic + LLM Integration
 
 The two extraction methods (Stage 2 heuristic and Stage 3 LLM) do not operate independently — they form a unified extraction system.
 
