@@ -1,180 +1,175 @@
 # How the System Works
 
-شرح مبسط لآلية عمل النظام خطوة بخطوة.
+A simplified step-by-step explanation of how the system processes a user's financial goal.
 
 ---
 
 ## Overview
 
-النظام يستقبل جملة من المستخدم تصف هدفاً مالياً، ثم يقوم باستخراف الأرقام منها، ويسأل عن المعلومات الناقصة واحداً تلو الآخر، ثم يحساب الجدول الزمني لتحقيق الهدف.
+The system receives a sentence from the user describing a financial goal, extracts numbers from it, asks for missing information one question at a time, then calculates the timeline to achieve the goal.
 
 ---
 
 ## Step 1 — User Sends a Message
 
-المستخدم يكتب جملة تصف هدفه المالي.
+The user writes a sentence describing their financial goal.
 
-**المطلوب**: جملة فيها الهدف + سعره. قد تحتوي أيضاً على الدخل الشهري.
-
-**مثال معنى**: "عاوز أشتري عربية ب ٨٠٠٠٠٠ ومرتبي ١٥٠٠٠"
-
-> (الملف لا يحتوي أمثلة نصية، هذا توضيح فقط)
+**Required**: The goal + its price. May also include monthly income.
 
 ---
 
 ## Step 2 — Text Normalization
 
-النظام يستقبل النص ويقوم بتوحيد صيغ الأرقام:
+The system receives the text and unifies number formats:
 
-1. **تحويل الأرقام الشرقية إلى غربية**: الأرقام العربية (٠١٢٣) والفارسية (۰۱۲۳) تتحول إلى (0123)
-2. **فصل النص عن الأرقام الملتصقة**: إذا كان الحرف ملتصقاً برقم (مثل "بـ50000") يتم إدراج مسافة بينهما
+1. **Convert non-Western digits**: Arabic-Indic and Persian digits are converted to 0-9
+2. **Separate text from attached digits**: If a letter is attached to a digit, a space is inserted between them
 
-**النتيجة**: نص جاهز للتحليل، كل أرقامه بصيغة موحدة.
+**Result**: Text ready for analysis, all numbers in a unified format.
 
 ---
 
 ## Step 3 — Extract Numbers by Regex
 
-النظام يبحث في النص عن الأرقام باستخدام أنماط regex:
+The system searches the text for numbers using regex patterns:
 
-1. **استخراج كل الأرقام**:
-   - الأعداد الصحيحة
-   - الأعداد العشرية
-   - الأرقام ذات اللواحق (k، مليون، آلاف)
-   - العملات والأرقام المفصولة بفواصل
+1. **Extract all numbers**:
+   - Integers
+   - Decimals
+   - Numbers with suffixes (k, million, thousand)
+   - Currencies and comma-separated numbers
 
-2. **تصنيف الأرقام حسب نوعها**:
-   - هل هذا الرقم هو **الهدف** (السعر)؟
-   - هل هو **الدخل الشهري** (الراتب)؟
-   - هل هو **المصروفات**؟
-   - هل هو **المدخرات**؟
-   - هل هو **الديون**؟
-   - هل هو **الدخل الإضافي**؟
+2. **Classify numbers by field**:
+   - Is this number the **goal** (price)?
+   - Is it **monthly income** (salary)?
+   - Is it **expenses**?
+   - Is it **savings**?
+   - Is it **debts**?
+   - Is it **extra income**?
 
-3. **فحص الاكتمال**:
-   - إذا تم العثور على جميع الحقول الستة ← تخطي المرحلة التالية
-   - إذا ناقص حقل أو أكثر ← الانتقال إلى الذكاء الاصطناعي
+3. **Completeness check**:
+   - If all six fields are found → skip the next stage
+   - If any field is missing → proceed to AI
 
-**النتيجة**: بعض الحقول ممتلئة، وبعضها لا يزال فارغاً.
+**Result**: Some fields are filled, others remain empty.
 
 ---
 
 ## Step 4 — AI Extraction
 
-إذا فشلت المرحلة السابقة في إيجاد جميع الحقول، يستعين النظام بالذكاء الاصطناعي:
+If the previous stage failed to find all fields, the system calls the AI:
 
-1. **بناء تعليمات للذكاء الاصطناعي**: تعريف كل حقل بالعربية والإنجليزية مع توضيح معناه
+1. **Build instructions for the AI**: Each field is defined in both Arabic and English with its meaning clarified
 
-2. **إرسال النص للذكاء الاصطناعي**: عبر سلسلة نماذج (النموذج الأساسي، ثم النموذج الاحتياطي إذا فشل الأول)
+2. **Send the text to the AI**: Through a model chain (primary model, then fallback if the first fails)
 
-3. **تطبيع الوحدات الزمنية**: إذا قال المستخدم "أسبوعياً" يتم ضرب الرقم في 4.2857، وإذا قال "سنوياً" يتم قسمته على 12. إذا لم يحدد وحدة، يفترض أن القيمة شهرية.
+3. **Normalize time units**: If the user says "weekly", multiply by 4.2857. If "yearly", divide by 12. If no unit is specified, the value is assumed to be monthly.
 
-4. **دمج النتائج**: نتائج الذكاء الاصطناعي تضاف إلى نتائج المرحلة السابقة (لا تستبدلها)
+4. **Merge results**: AI results are added to the previous stage's results (they do not replace them)
 
-**النتيجة**: حقول أكثر امتلاءً، لكن قد لا تزال هناك حقول ناقصة.
+**Result**: More fields are filled, but some may still be missing.
 
 ---
 
 ## Step 5 — Ask for Missing Information
 
-إذا لا يزال هناك حقول ناقصة، يبدأ النظام بسؤال المستخدم واحداً تلو الآخر:
+If fields are still missing, the system asks the user one at a time:
 
-**ترتيب الأسئلة**:
-1. **المصروفات الشهرية**: "هل لديك مصاريف شهرية؟" (نعم/لا + القيمة)
-2. **المدخرات الحالية**: "هل لديك مدخرات حالية؟" (نعم/لا + القيمة)
-3. **الديون الحالية**: "هل عليك ديون أو قروض؟" (نعم/لا + القيمة)
-4. **الدخل الإضافي**: "هل لديك دخل إضافي شهري؟" (نعم/لا + القيمة)
+**Question order**:
+1. **Monthly expenses**: "Do you have any monthly expenses?" (Yes/No + value)
+2. **Current savings**: "Do you have any current savings?" (Yes/No + value)
+3. **Current debts**: "Do you have any debts or loans?" (Yes/No + value)
+4. **Extra income**: "Do you have any extra monthly income?" (Yes/No + value)
 
-**لكل سؤال**:
-- إذا أجاب "لا" ← تعيين القيمة إلى 0
-- إذا أجاب "نعم" مع رقم ← استخراج الرقم وتطبيع الوحدة الزمنية
-- إذا أجاب "نعم" بدون رقم ← تعيين قيمة تقديرية
+**For each question**:
+- If the answer is "No" → set the value to 0
+- If "Yes" with a number → extract the number and normalize the time unit
+- If "Yes" without a number → set an estimated value
 
-**النتيجة**: بعد الإجابة على جميع الأسئلة، جميع الحقول الستة ممتلئة.
+**Result**: After answering all questions, all six fields are filled.
 
 ---
 
 ## Step 6 — Calculate Timeline
 
-عند اكتمال جميع الحقول، يقوم النظام بحساب الجدول الزمني:
+When all fields are complete, the system calculates the timeline:
 
-### المعادلات
+### Formulas
 
 ```
-صافي المدخرات الشهري = (الدخل + الدخل الإضافي) - المصروفات
-المدخرات الفعلية      = أكبـر قيمة (المدخرات - الديون, 0)
-المتبقي               = أكبـر قيمة (الهدف - المدخرات الفعلية, 0)
-عدد الشهور            = تقريب لأعلى (المتبقي / صافي المدخرات الشهري)
+net_monthly_savings = (income + extra_income) - expenses
+effective_savings   = max(savings - debts, 0)
+remaining           = max(goal - effective_savings, 0)
+months              = ceil(remaining / net_monthly_savings)
 ```
 
-### الحالات الخاصة
+### Edge Cases
 
-- **لا يوجد هدف**: النتيجة غير قابلة للحساب
-- **المدخرات تكفي الهدف**: المدة = 0، رسالة "المبلغ مؤمن بالفعل"
-- **المصروفات ≥ الدخل**: غير قابل للتحقيق، اقتراح بتقليل المصروفات
-- **لا يوجد دخل**: غير قابل للحساب
+- **No goal**: Result is unachievable
+- **Savings already cover the goal**: Duration is 0, message says "already funded"
+- **Expenses ≥ income**: Unachievable, suggests reducing expenses
+- **No income**: Cannot calculate
 
-### تنسيق المدة
+### Duration Formatting
 
-تحويل عدد الشهور إلى صيغة نصية:
-- أقل من شهر → "less than a month" / "أقل من شهر"
-- سنة واحدة → "1 year" / "سنة واحدة"
-- سنتان و ٣ أشهر → "2 years and 3 months" / "سنتان و ٣ أشهر"
+Months are converted to a readable string:
+- Less than a month → "less than a month"
+- One year → "1 year"
+- Two years and 3 months → "2 years and 3 months"
 
-### الاقتراحات
+### Suggestions
 
-يقدم النظام حتى 3 اقتراحات لتحسين النتيجة:
-- تخصيص مبلغ احتياطي شهري
-- طرق لتقليل المدة (إذا زادت عن 12 شهراً)
-- مراجعة المصروفات (إذا تجاوزت 60% من الدخل)
-- دمج الأهداف المتعددة
+The system provides up to 3 suggestions to improve the result:
+- Setting aside a monthly reserve
+- Ways to shorten the timeline (if longer than 12 months)
+- Reviewing expenses (if they exceed 60% of income)
+- Consolidating multiple goals
 
-**النتيجة**: المدة الزمنية + الاقتراحات + إمكانية التحقيق.
+**Result**: Timeline duration + suggestions + achievability status.
 
 ---
 
 ## Step 7 — Response
 
-النظام يبني الرد ويرسله للواجهة الأمامية:
+The system builds the response and sends it to the frontend:
 
-**محتويات الرد**:
-- **نص الرد**: جملة توضح النتيجة بالعربية أو الإنجليزية
-- **البيانات المستخرجة**: جميع الحقول المالية (الهدف، الدخل، المصروفات، المدخرات، الديون، الدخل الإضافي)
-- **نتيجة الحساب**: المدة، صافي المدخرات، المتبقي، الاقتراحات
-- **حالة الاكتمال**: هل تم حساب كل شيء؟
+**Response contents**:
+- **Response text**: A sentence explaining the result
+- **Extracted data**: All financial fields (goal, income, expenses, savings, debts, extra income)
+- **Calculation result**: Duration, net savings, remaining amount, suggestions
+- **Completeness status**: Whether everything was calculated
 
-**في نفس الوقت** (في الخلفية):
-- حفظ المحادثة في ملف محلي (`~/.mujarrad-chat/history.json`)
-- حفظ المحادثة في الخادم البعيد (إذا فشل، لا يتأثر الرد)
+**In the background**:
+- Save the conversation to a local file (`~/.mujarrad-chat/history.json`)
+- Save the conversation to the remote server (if it fails, the response is unaffected)
 
-**النتيجة**: المستخدم يرى النتيجة فوراً، والتخزين يتم في الخلفية.
-
+**Result**: The user sees the result immediately while storage happens in the background.
 
 ---
 
 ## Step 8 — Diagram (Optional)
 
-يمكن للمستخدم طلب رسم بياني يوضح الخطة المالية:
+The user can request a diagram showing the financial plan:
 
-- **الطبقة الأولى**: التدفق النقدي (الدخل → المصروفات → صافي المدخرات)
-- **الطبقة الثانية**: التقدم نحو الهدف (المدخرات → الهدف → المتبقي → المدة الزمنية)
-- **الألوان**: بنفسجي للدخل، وردي للمصروفات، أخضر للنتيجة القابلة للتحقيق
+- **Row 1**: Cash flow (Income → Expenses → Net Savings)
+- **Row 2**: Goal progress (Savings → Goal → Remaining → Timeline)
+- **Colors**: Purple for income, pink for expenses, green for achievable results
 
-يفتح الرسم في محرر draw.io حيث يمكن تعديله وحفظه.
+The diagram opens in the draw.io editor where it can be modified and saved.
 
 ---
 
 ## Summary
 
-| الخطوة | الوظيفة | تعتمد على ذكاء اصطناعي؟ |
-|--------|---------|------------------------|
-| 1. إرسال الرسالة | المستخدم يصف الهدف | لا |
-| 2. تطبيع النص | توحيد الأرقام وفصلها | لا |
-| 3. استخراج بـ regex | إيجاد الأرقام وتصنيفها | لا |
-| 4. استخراج بـ AI | إيجاد الحقول الناقصة | نعم |
-| 5. الأسئلة المتابعة | سؤال عن الحقول الناقصة | لا |
-| 6. الحساب | حساب الجدول الزمني | لا |
-| 7. الرد والتخزين | إرجاع النتيجة + حفظ | لا |
-| 8. الرسم البياني | توليد خريطة draw.io | لا |
+| Step | Function | Depends on AI? |
+|------|----------|----------------|
+| 1. Send message | User describes the goal | No |
+| 2. Text normalization | Unify number formats | No |
+| 3. Regex extraction | Find and classify numbers | No |
+| 4. AI extraction | Find missing fields | Yes |
+| 5. Follow-up questions | Ask about missing fields | No |
+| 6. Calculation | Calculate the timeline | No |
+| 7. Response and storage | Return result + save | No |
+| 8. Diagram | Generate draw.io roadmap | No |
 
-الذكاء الاصطناعي يُستخدم فقط في الخطوة 4 (عند عدم قدرة الـ regex على إيجاد جميع الحقول). كل الخطوات الأخرى محلية ومجانية.
+AI is only used in Step 4 (when regex cannot find all fields). All other steps are local and free.
