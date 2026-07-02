@@ -151,12 +151,12 @@ The system builds the response and sends it to the frontend:
 
 | Step | Function | Depends on AI? |
 |------|----------|----------------|
-| 1. Send message | User describes the goal | No |
-| 2. Text normalization | Unify number formats | No |
-| 3. Regex extraction | Find and classify numbers | No |
+| 1. Send message | User describes the goal | Yes |
+| 2. Text normalization | Unify number formats | Yes |
+| 3. Regex extraction | Find and classify numbers | Yes |
 | 4. AI extraction | Find missing fields | Yes |
 | 5. AI asks questions | Ask about missing fields | Yes |
-| 6. Calculation | Calculate the timeline | No |
-| 7. Response and storage | Return result + save | No |
+| 6. Calculation | Calculate the timeline | Yes |
+| 7. Response and storage | Return result + save | Yes |
 
-AI is used in Steps 4 and 5. All other steps are local and free.
+From the user's perspective, the entire conversation is with an AI. All steps are part of the AI system.
